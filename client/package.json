@@ -10,10 +10,22 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@radix-ui/react-label": "^2.1.1",
+    "@radix-ui/react-slot": "^1.1.1",
     "axios": "^1.7.9",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "framer-motion": "^11.16.0",
     "lodash": "^4.17.21",
+    "lucide-react": "^0.469.0",
+    "particles-bg": "^2.5.5",
+    "particles.js": "^2.0.0",
     "react": "^18.2.0",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-tsparticles": "^2.12.2",
+    "tailwind-merge": "^2.6.0",
+    "tailwindcss-animate": "^1.0.7",
+    "tsparticles": "^3.7.1"
   },
   "devDependencies": {
     "@types/react": "^18.2.64",
