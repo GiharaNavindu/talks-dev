@@ -2,9 +2,9 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_USERNAME = 'devgixa' // Your Docker Hub username
-        DOCKER_IMAGE_FRONTEND = 'devgixa/frontend-service'
-        DOCKER_IMAGE_BACKEND = 'devgixa/backend-service'
+        DOCKER_USERNAME = 'Hi lassana Lamayo' 
+        DOCKER_IMAGE_FRONTEND = 'frontend ekt yana paara'
+        DOCKER_IMAGE_BACKEND = 'backend et yana paara'
     }
 
     stages {
