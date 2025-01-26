@@ -1,0 +1,35 @@
+services:
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: eloquent_lalande
+    ports:
+      - "4040:4040"
+    env_file:
+      - ./api/.env
+    depends_on:
+      - mongo
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: sharp_diffie
+    depends_on:
+      - api
+    ports:
+      - "5173:5173" # Maps port 5173 on the host to port 5173 in the container
+    environment:
+      - VITE_API_URL=http://localhost:5173 # Backend API URL for the frontend
+
+  mongo:
+    image: mongo:6.0
+    container_name: mongo-service
+    ports:
+      - "27017:27017" # Maps port 27017 for MongoDB
+    volumes:
+      - mongo-data:/data/db # Persistent storage for MongoDB
+
+volumes:
+  mongo-data:
