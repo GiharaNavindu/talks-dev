@@ -1,0 +1,100 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_USERNAME = 'devgixa' // Your Docker Hub username
+        DOCKER_IMAGE_FRONTEND = 'devgixa/frontend-service'
+        DOCKER_IMAGE_BACKEND = 'devgixa/backend-service'
+    }
+
+    stages {
+        // Stage 1: Set Docker Context (Ensure Jenkins uses the correct Docker context)
+        // stage('Set Docker Context') {
+        //     steps {
+        //         script {
+        //             echo "Configuring Docker context..."
+        //             // Check the current Docker context
+        //             def currentContext = bat(script: 'docker context ls --format "{{.Name}} {{.Current}}"', returnStdout: true).trim()
+        //             echo "Current Docker context: ${currentContext}"
+
+        //             // Check if the current context is already 'desktop-linux'
+        //             if (!currentContext.contains("desktop-linux *")) {
+        //                 echo "Switching Docker context to 'desktop-linux'..."
+        //                 bat 'docker context use desktop-linux'
+        //                 echo "Docker context set to 'desktop-linux'."
+        //             } else {
+        //                 echo "Docker context is already set to 'desktop-linux'. No action needed."
+        //             }
+        //         }
+        //     }
+        // }
+
+        // Stage 2: Checkout Source Code from SCM
+        stage('SCM Checkout') {
+            steps {
+                retry(3) {
+                    git branch: 'main', url: 'https://github.com/GiharaNavindu/talks-dev.git' // Replace with your repository URL
+                }
+            }
+        }
+
+        // Stage 3: Build Frontend Docker Image
+        stage('Build Frontend Image') {
+            steps {
+                script {
+                    bat "docker build -t ${DOCKER_IMAGE_FRONTEND}:%BUILD_NUMBER% ./client"
+                }
+            }
+        }
+
+        // Stage 4: Build Backend Docker Image
+        stage('Build Backend Image') {
+            steps {
+                script {
+                    bat "docker build -t ${DOCKER_IMAGE_BACKEND}:%BUILD_NUMBER% ./api"
+                }
+            }
+        }
+
+        // Stage 5: Login to Docker Hub
+        stage('Login to Docker Hub') {
+            steps {
+                script {
+                    echo "Attempting to log in to Docker Hub..."
+                    withCredentials([string(credentialsId: 'Dockerpwd', variable: 'DOCKER_PASSWORD')]) {
+                        try {
+                            // Log in to Docker Hub
+                            bat "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
+                            echo "Successfully logged in to Docker Hub."
+                        } catch (Exception e) {
+                            echo "Failed to log in to Docker Hub: ${e.message}"
+                            error "Docker login failed."
+                        }
+                    }
+                }
+            }
+        }
+
+        // Stage 6: Push Docker Images to Docker Hub
+        stage('Push Images to Docker Hub') {
+            steps {
+                script {
+                    // Push Frontend Image
+                    bat "docker push ${DOCKER_IMAGE_FRONTEND}:%BUILD_NUMBER%"
+
+                    // Push Backend Image
+                    bat "docker push ${DOCKER_IMAGE_BACKEND}:%BUILD_NUMBER%"
+                }
+            }
+        }
+    }
+
+    // Post-build actions
+    post {
+        always {
+            // Log out from Docker Hub
+            bat 'docker logout'
+            echo "Logged out from Docker Hub."
+        }
+    }
+}
