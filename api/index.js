@@ -1,15 +1,12 @@
-import express from "express";
-import { connectDB } from "./config/db.js";
-import { corsOptions } from "./config/cors.js";
-import authRoutes from "./routes/authRoutes.js";
-import messageRoutes from "./routes/messageRoutes.js";
-import peopleRoutes from "./routes/peopleRoutes.js";
-import { authenticateJWT } from "./middlewares/authMiddleware.js";
-import { WebSocketServer } from "ws";
-import cors from "cors";
-import dotenv from "dotenv";
-import mongoose from "mongoose";
-import bcrypt from "bcrypt";
+// import express from "express";
+// import { connectDB } from "./config/db.js";
+
+// import authRoutes from "./routes/authRoutes.js";
+// import messageRoutes from "./routes/messageRoutes.js";
+// import peopleRoutes from "./routes/peopleRoutes.js";
+// import { authenticateJWT } from "./middlewares/authMiddleware.js";
+// import { WebSocketServer } from "ws";
+// import cors from "cors";
 
 // const app = express();
 // app.use(express.json());
@@ -34,6 +31,21 @@ import bcrypt from "bcrypt";
 //   });
 // });
 
+import express from "express";
+import mongoose from "mongoose";
+import cookieParser from "cookie-parser";
+import dotenv from "dotenv";
+import jwt from "jsonwebtoken";
+import cors from "cors";
+import bcrypt from "bcryptjs";
+import User from "./models/User.js";
+import Message from "./models/Message.js";
+import { WebSocketServer } from "ws";
+import fs from "fs";
+// import { corsOptions } from "./config/cors.js";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+
 dotenv.config();
 mongoose.connect(process.env.MONGO_URL, (err) => {
   if (err) throw err;
@@ -43,11 +55,12 @@ const jwtSecret = process.env.JWT_SECRET;
 const bcryptSalt = bcrypt.genSaltSync(10);
 
 const app = express();
-
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 app.use("/uploads", express.static(__dirname + "/uploads"));
-
 app.use(express.json());
 app.use(cookieParser());
+// app.use(cors(corsOptions));
 
 // CORS configuration
 app.use(
