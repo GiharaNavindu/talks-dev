@@ -1,28 +1,45 @@
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 import User from "../models/User.js";
+import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
+import "dotenv/config";
+
+const jwtSecret = process.env.JWT_SECRET;
+const bcryptSalt = bcrypt.genSaltSync(10);
+
+export const test = (req, res) => res.json("test ok");
+
+export const profile = (req, res) => {
+  const token = req.cookies?.token;
+  if (!token) return res.status(401).json("No token provided");
+  
+  jwt.verify(token, jwtSecret, {}, (err, userData) => {
+    if (err) return res.status(401).json("Invalid token");
+    res.json(userData);
+  });
+};
 
 export const login = async (req, res) => {
   const { username, password } = req.body;
-  const foundUser = await User.findOne({ username });
-  if (foundUser) {
+  try {
+    const foundUser = await User.findOne({ username });
+    if (!foundUser) return res.status(404).json("User not found");
+    
     const passOk = bcrypt.compareSync(password, foundUser.password);
-    if (passOk) {
-      jwt.sign(
-        { userId: foundUser._id, username },
-        process.env.JWT_SECRET,
-        {},
-        (err, token) => {
-          res
-            .cookie("token", token, { sameSite: "none", secure: true })
-            .json({ id: foundUser._id });
-        }
-      );
-    } else {
-      res.status(401).json("Invalid password");
-    }
-  } else {
-    res.status(404).json("User not found");
+    if (!passOk) return res.status(401).json("Invalid password");
+
+    jwt.sign(
+      { userId: foundUser._id, username },
+      jwtSecret,
+      {},
+      (err, token) => {
+        if (err) throw err;
+        res.cookie("token", token, { sameSite: "none", secure: true }).json({
+          id: foundUser._id,
+        });
+      }
+    );
+  } catch (err) {
+    res.status(500).json("Internal server error");
   }
 };
 
@@ -33,14 +50,15 @@ export const logout = (req, res) => {
 export const register = async (req, res) => {
   const { username, password } = req.body;
   try {
-    const hashedPassword = bcrypt.hashSync(password, bcrypt.genSaltSync(10));
+    const hashedPassword = bcrypt.hashSync(password, bcryptSalt);
     const createdUser = await User.create({
       username,
       password: hashedPassword,
     });
+    
     jwt.sign(
       { userId: createdUser._id, username },
-      process.env.JWT_SECRET,
+      jwtSecret,
       {},
       (err, token) => {
         if (err) throw err;
@@ -51,7 +69,9 @@ export const register = async (req, res) => {
       }
     );
   } catch (err) {
-    console.error(err);
+    if (err.code === 11000) {
+      return res.status(409).json("Username already exists");
+    }
     res.status(500).json("Error creating user");
   }
 };

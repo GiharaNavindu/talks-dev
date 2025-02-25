@@ -1,4 +1,6 @@
-export const corsOptions = {
+import cors from "cors";
+
+const corsOptions = {
   credentials: true,
   origin: function (origin, callback) {
     const allowedOrigins = [process.env.CLIENT_URL, "http://localhost:5173"];
@@ -9,3 +11,5 @@ export const corsOptions = {
     }
   },
 };
+
+export default cors(corsOptions); 
