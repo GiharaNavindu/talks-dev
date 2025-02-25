@@ -8,3 +8,4 @@ export const connectDB = () => {
     console.log("Connected to the database successfully!");
   });
 };
+
