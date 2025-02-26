@@ -290,4 +290,4 @@ export default function Chat() {
 }
 
 
-//ci/cd pipline check command
+//ci/cd pipline check commands
