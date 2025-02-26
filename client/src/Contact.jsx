@@ -18,3 +18,6 @@ export default function Contact({ id, username, onClick, selected, online }) {
     </div>
   );
 }
+
+
+//test
