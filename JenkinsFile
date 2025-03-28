@@ -5,40 +5,18 @@ pipeline {
         DOCKER_USERNAME = 'devgixa' 
         DOCKER_IMAGE_FRONTEND = 'devgixa/frontend-service'
         DOCKER_IMAGE_BACKEND = 'devgixa/backend-service'
+        DOCKER_IMAGE_DATABASE = 'devgixa/mongo-service' // New Database Image
     }
 
     stages {
-        // Stage 1: Set Docker Context (Ensure Jenkins uses the correct Docker context)
-        // stage('Set Docker Context') {
-        //     steps {
-        //         script {
-        //             echo "Configuring Docker context..."
-        //             // Check the current Docker context
-        //             def currentContext = bat(script: 'docker context ls --format "{{.Name}} {{.Current}}"', returnStdout: true).trim()
-        //             echo "Current Docker context: ${currentContext}"
-
-        //             // Check if the current context is already 'desktop-linux'
-        //             if (!currentContext.contains("desktop-linux *")) {
-        //                 echo "Switching Docker context to 'desktop-linux'..."
-        //                 bat 'docker context use desktop-linux'
-        //                 echo "Docker context set to 'desktop-linux'."
-        //             } else {
-        //                 echo "Docker context is already set to 'desktop-linux'. No action needed."
-        //             }
-        //         }
-        //     }
-        // }
-
-        // Stage 2: Checkout Source Code from SCM
         stage('SCM Checkout') {
             steps {
                 retry(3) {
-                    git branch: 'main', url: 'https://github.com/GiharaNavindu/talks-dev.git' // Replace with your repository URL
+                    git branch: 'main', url: 'https://github.com/GiharaNavindu/talks-dev.git'
                 }
             }
         }
 
-        // Stage 3: Build Frontend Docker Image
         stage('Build Frontend Image') {
             steps {
                 script {
@@ -47,7 +25,6 @@ pipeline {
             }
         }
 
-        // Stage 4: Build Backend Docker Image
         stage('Build Backend Image') {
             steps {
                 script {
@@ -55,15 +32,22 @@ pipeline {
                 }
             }
         }
+        
+        stage('Build Database Image') { // New Stage for MongoDB Image
+            steps {
+                script {
+                    bat "docker pull mongo:6.0"
+                    bat "docker tag mongo:6.0 ${DOCKER_IMAGE_DATABASE}:%BUILD_NUMBER%"
+                }
+            }
+        }
 
-        // Stage 5: Login to Docker Hub
         stage('Login to Docker Hub') {
             steps {
                 script {
                     echo "Attempting to log in to Docker Hub..."
                     withCredentials([string(credentialsId: 'Dockerpwd', variable: 'DOCKER_PASSWORD')]) {
                         try {
-                            // Log in to Docker Hub
                             bat "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
                             echo "Successfully logged in to Docker Hub."
                         } catch (Exception e) {
@@ -75,24 +59,19 @@ pipeline {
             }
         }
 
-        // Stage 6: Push Docker Images to Docker Hub
         stage('Push Images to Docker Hub') {
             steps {
                 script {
-                    // Push Frontend Image
                     bat "docker push ${DOCKER_IMAGE_FRONTEND}:%BUILD_NUMBER%"
-
-                    // Push Backend Image
                     bat "docker push ${DOCKER_IMAGE_BACKEND}:%BUILD_NUMBER%"
+                    bat "docker push ${DOCKER_IMAGE_DATABASE}:%BUILD_NUMBER%" // Push Database Image
                 }
             }
         }
     }
 
-    // Post-build actions
     post {
         always {
-            // Log out from Docker Hub
             bat 'docker logout'
             echo "Logged out from Docker Hub."
         }
