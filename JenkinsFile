@@ -1,3 +1,86 @@
+// pipeline {
+//     agent any
+
+//     environment {
+//         DOCKER_USERNAME = 'devgixa' 
+//         DOCKER_IMAGE_FRONTEND = 'devgixa/frontend-service'
+//         DOCKER_IMAGE_BACKEND = 'devgixa/backend-service'
+//         DOCKER_IMAGE_DATABASE = 'devgixa/mongo-service' // New Database Image
+//     }
+
+//     stages {
+//         stage('SCM Checkout') {
+//             steps {
+//                 retry(3) {
+//                     git branch: 'main', url: 'https://github.com/GiharaNavindu/talks-dev.git'
+//                 }
+//             }
+//         }
+
+//         stage('Build Frontend Image') {
+//             steps {
+//                 script {
+//                     bat "docker build -t ${DOCKER_IMAGE_FRONTEND}:%BUILD_NUMBER% ./client"
+//                 }
+//             }
+//         }
+
+//         stage('Build Backend Image') {
+//             steps {
+//                 script {
+//                     bat "docker build -t ${DOCKER_IMAGE_BACKEND}:%BUILD_NUMBER% ./api"
+//                 }
+//             }
+//         }
+        
+//         stage('Build Database Image') { // New Stage for MongoDB Image
+//             steps {
+//                 script {
+//                     bat "docker pull mongo:6.0"
+//                     bat "docker tag mongo:6.0 ${DOCKER_IMAGE_DATABASE}:%BUILD_NUMBER%"
+//                 }
+//             }
+//         }
+
+//         stage('Login to Docker Hub') {
+//             steps {
+//                 script {
+//                     echo "Attempting to log in to Docker Hub..."
+//                     withCredentials([string(credentialsId: 'Dockerpwd', variable: 'DOCKER_PASSWORD')]) {
+//                         try {
+//                             bat "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
+//                             echo "Successfully logged in to Docker Hub."
+//                         } catch (Exception e) {
+//                             echo "Failed to log in to Docker Hub: ${e.message}"
+//                             error "Docker login failed."
+//                         }
+//                     }
+//                 }
+//             }
+//         }
+
+//         stage('Push Images to Docker Hub') {
+//             steps {
+//                 script {
+//                     bat "docker push ${DOCKER_IMAGE_FRONTEND}:%BUILD_NUMBER%"
+//                     bat "docker push ${DOCKER_IMAGE_BACKEND}:%BUILD_NUMBER%"
+//                     bat "docker push ${DOCKER_IMAGE_DATABASE}:%BUILD_NUMBER%" // Push Database Image
+//                 }
+//             }
+//         }
+//     }
+
+//     post {
+//         always {
+//             bat 'docker logout'
+//             echo "Logged out from Docker Hub."
+//         }
+//     }
+// }
+
+
+
+
 pipeline {
     agent any
 
@@ -5,10 +88,11 @@ pipeline {
         DOCKER_USERNAME = 'devgixa' 
         DOCKER_IMAGE_FRONTEND = 'devgixa/frontend-service'
         DOCKER_IMAGE_BACKEND = 'devgixa/backend-service'
-        DOCKER_IMAGE_DATABASE = 'devgixa/mongo-service' // New Database Image
+        BUILD_TAG = "${env.BUILD_NUMBER}" // Use Jenkins build number as the tag
     }
 
     stages {
+        // Stage 1: Checkout Source Code from SCM
         stage('SCM Checkout') {
             steps {
                 retry(3) {
@@ -17,63 +101,163 @@ pipeline {
             }
         }
 
-        stage('Build Frontend Image') {
-            steps {
-                script {
-                    bat "docker build -t ${DOCKER_IMAGE_FRONTEND}:%BUILD_NUMBER% ./client"
+        // Stage 2: Run Tests (Parallel for Frontend and Backend)
+        stage('Run Tests') {
+            parallel {
+                stage('Backend Tests') {
+                    steps {
+                        dir('api') {
+                            bat 'npm install' // Ensure dependencies are installed
+                            bat 'npm test'    // Run Mocha tests
+                        }
+                    }
                 }
-            }
-        }
-
-        stage('Build Backend Image') {
-            steps {
-                script {
-                    bat "docker build -t ${DOCKER_IMAGE_BACKEND}:%BUILD_NUMBER% ./api"
-                }
-            }
-        }
-        
-        stage('Build Database Image') { // New Stage for MongoDB Image
-            steps {
-                script {
-                    bat "docker pull mongo:6.0"
-                    bat "docker tag mongo:6.0 ${DOCKER_IMAGE_DATABASE}:%BUILD_NUMBER%"
-                }
-            }
-        }
-
-        stage('Login to Docker Hub') {
-            steps {
-                script {
-                    echo "Attempting to log in to Docker Hub..."
-                    withCredentials([string(credentialsId: 'Dockerpwd', variable: 'DOCKER_PASSWORD')]) {
-                        try {
-                            bat "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
-                            echo "Successfully logged in to Docker Hub."
-                        } catch (Exception e) {
-                            echo "Failed to log in to Docker Hub: ${e.message}"
-                            error "Docker login failed."
+                stage('Frontend Tests') {
+                    steps {
+                        dir('client') {
+                            bat 'npm install' // Ensure dependencies are installed
+                            bat 'npm test'    // Run Jest tests
                         }
                     }
                 }
             }
         }
 
+        // Stage 3: Build Frontend Docker Image
+        stage('Build Frontend Image') {
+            steps {
+                dir('client') {
+                    bat "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} ."
+                }
+            }
+        }
+
+        // Stage 4: Build Backend Docker Image
+        stage('Build Backend Image') {
+            steps {
+                dir('api') {
+                    bat "docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ."
+                }
+            }
+        }
+
+        // Stage 5: Login to Docker Hub
+        stage('Login to Docker Hub') {
+            steps {
+                withCredentials([string(credentialsId: 'Dockerpwd', variable: 'DOCKER_PASSWORD')]) {
+                    bat "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
+                }
+            }
+        }
+
+        // Stage 6: Push Docker Images to Docker Hub
         stage('Push Images to Docker Hub') {
             steps {
-                script {
-                    bat "docker push ${DOCKER_IMAGE_FRONTEND}:%BUILD_NUMBER%"
-                    bat "docker push ${DOCKER_IMAGE_BACKEND}:%BUILD_NUMBER%"
-                    bat "docker push ${DOCKER_IMAGE_DATABASE}:%BUILD_NUMBER%" // Push Database Image
+                // Push Frontend Image
+                bat "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
+                // Tag and push as :latest for easy reference
+                bat "docker tag ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} ${DOCKER_IMAGE_FRONTEND}:latest"
+                bat "docker push ${DOCKER_IMAGE_FRONTEND}:latest"
+
+                // Push Backend Image
+                bat "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
+                // Tag and push as :latest
+                bat "docker tag ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ${DOCKER_IMAGE_BACKEND}:latest"
+                bat "docker push ${DOCKER_IMAGE_BACKEND}:latest"
+            }
+        }
+
+        // Stage 7: Provision Infrastructure with Terraform
+        stage('Provision Infrastructure') {
+            steps {
+                dir('terraform') {
+                    // Initialize Terraform
+                    bat 'terraform init'
+                    // Apply Terraform configuration to provision EC2 and ALB
+                    bat 'terraform apply -auto-approve'
+                    // Capture the EC2 public IP for Ansible
+                    script {
+                        def ec2PublicIp = bat(script: 'terraform output -raw instance_ip', returnStdout: true).trim()
+                        env.EC2_PUBLIC_IP = ec2PublicIp
+                    }
+                }
+            }
+        }
+
+        // Stage 8: Deploy to EC2 with Ansible
+        stage('Deploy to EC2') {
+            steps {
+                // Dynamically update Ansible inventory with the EC2 public IP
+                writeFile file: 'ansible/hosts', text: """
+                [chat_servers]
+                ${EC2_PUBLIC_IP} ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/chat-app-key.pem
+                """
+
+                // Update docker-compose.yml with the correct image tags
+                writeFile file: 'docker-compose.yml', text: """
+                services:
+                  api:
+                    image: ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}
+                    container_name: eloquent_lalande
+                    ports:
+                      - "4040:4040"
+                    env_file:
+                      - ./api/.env
+                    depends_on:
+                      - mongo
+
+                  client:
+                    image: ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}
+                    container_name: sharp_diffie
+                    depends_on:
+                      - api
+                    ports:
+                      - "5173:5173"
+                    environment:
+                      - VITE_API_URL=http://localhost:5173
+
+                  mongo:
+                    image: mongo:6.0
+                    container_name: mongo-service
+                    ports:
+                      - "27017:27017"
+                    volumes:
+                      - mongo-data:/data/db
+
+                  nginx:
+                    image: nginx:latest
+                    container_name: nginx-reverse-proxy
+                    ports:
+                      - "80:80"
+                    volumes:
+                      - ./nginx.conf:/etc/nginx/nginx.conf
+                    depends_on:
+                      - api
+
+                volumes:
+                  mongo-data:
+                """
+
+                // Run Ansible playbook to deploy the application
+                dir('ansible') {
+                    bat "ansible-playbook -i hosts deploy.yml --extra-vars \"docker_image_backend=${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} docker_image_frontend=${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}\""
                 }
             }
         }
     }
 
+    // Post-build actions
     post {
         always {
+            // Log out from Docker Hub
             bat 'docker logout'
             echo "Logged out from Docker Hub."
+        }
+        success {
+            echo "Pipeline completed successfully! Application deployed to EC2 at ${EC2_PUBLIC_IP}"
+        }
+        failure {
+            echo "Pipeline failed. Check the logs for details."
         }
     }
 }
