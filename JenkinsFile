@@ -40,12 +40,12 @@ pipeline {
 
                     // Stop and remove containers if they exist
                     bat """
-                        FOR /F "tokens=*" %%i IN ('docker ps -aq -f name=frontend-container') DO (
+                        FOR /F "tokens=*" %%i IN ('docker ps -aq -f "name=frontend-container"') DO (
                             docker stop frontend-container
                             docker rm frontend-container
                         )
 
-                        FOR /F "tokens=*" %%i IN ('docker ps -aq -f name=backend-container') DO (
+                        FOR /F "tokens=*" %%i IN ('docker ps -aq -f "name=backend-container"') DO (
                             docker stop backend-container
                             docker rm backend-container
                         )
@@ -103,4 +103,3 @@ pipeline {
         }
     }
 }
-
