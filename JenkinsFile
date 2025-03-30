@@ -46,7 +46,8 @@ pipeline {
 
                     echo "Running new containers..."
                     bat """
-                        docker network create app-network || true
+                        docker network inspect app-network > /dev/null 2>&1 || docker network create app-network
+
 
                         docker run -d --name backend-container --network app-network \
                             --env-file ./api/.env \
