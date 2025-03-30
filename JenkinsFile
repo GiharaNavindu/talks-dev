@@ -36,27 +36,9 @@ pipeline {
         stage('Run Locally for Testing') {
             steps {
                 script {
-                    echo "Stopping and removing existing containers..."
+                    echo "Running containers locally..."
 
-                    // Stop and remove containers if they exist
-                    bat """
-                        FOR /F "tokens=*" %%i IN ('docker ps -aq -f "name=frontend-container"') DO (
-                            docker stop frontend-container
-                            docker rm frontend-container
-                        )
-
-                        FOR /F "tokens=*" %%i IN ('docker ps -aq -f "name=backend-container"') DO (
-                            docker stop backend-container
-                            docker rm backend-container
-                        )
-                    """
-
-                    echo "Checking if network 'app-network' exists and creating if necessary..."
-                    bat """
-                        docker network inspect app-network > NUL 2>&1 || docker network create app-network
-                    """
-
-                    echo "Running new containers..."
+                    // Create and run the frontend and backend containers
                     bat """
                         docker run -d --name backend-container --network app-network \
                             --env-file ./api/.env \
@@ -103,4 +85,3 @@ pipeline {
         }
     }
 }
-
