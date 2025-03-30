@@ -37,16 +37,23 @@ pipeline {
             steps {
                 script {
                     echo "Stopping and removing existing containers..."
+
+                    // Stop and remove containers if they exist
                     bat """
-                        docker stop frontend-container || true
-                        docker stop backend-container || true
-                        docker rm frontend-container || true
-                        docker rm backend-container || true
+                        IF EXIST (docker ps -aq -f name=frontend-container) (
+                            docker stop frontend-container
+                            docker rm frontend-container
+                        )
+
+                        IF EXIST (docker ps -aq -f name=backend-container) (
+                            docker stop backend-container
+                            docker rm backend-container
+                        )
                     """
 
                     echo "Checking if network 'app-network' exists and creating if necessary..."
                     bat """
-                        docker network inspect app-network > /dev/null 2>&1 || docker network create app-network
+                        docker network inspect app-network > NUL 2>&1 || docker network create app-network
                     """
 
                     echo "Running new containers..."
