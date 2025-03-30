@@ -55,40 +55,22 @@ pipeline {
                 script {
                     echo "Running containers locally..."
 
-                    // Create and run the frontend and backend containers
-                    try {
+                    // Create and run the backend container with environment variables injected from Jenkins
+                    withCredentials([string(credentialsId: 'chatenv', variable: 'DOCKER_ENV_VARS')]) {
                         bat """
                             docker run -d --name backend-container --network ${NETWORK_NAME} \
-                                --env-file ./api/.env \
+                                --env ${DOCKER_ENV_VARS} \
                                 -p ${BACKEND_PORT}:${BACKEND_PORT} ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}
                         """
-
-                        // Check backend container logs if it fails to start
-                        def backendRunning = bat(script: "docker ps -q -f name=backend-container", returnStatus: true)
-                        if (backendRunning != 0) {
-                            echo "Backend container failed to start. Checking logs..."
-                            bat "docker logs backend-container"
-                            error "Backend container startup failed!"
-                        }
-
-                        bat """
-                            docker run -d --name frontend-container --network ${NETWORK_NAME} \
-                                -p 5173:5173 ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}
-                        """
-
-                        // Check frontend container logs
-                        def frontendRunning = bat(script: "docker ps -q -f name=frontend-container", returnStatus: true)
-                        if (frontendRunning != 0) {
-                            echo "Frontend container failed to start. Checking logs..."
-                            bat "docker logs frontend-container"
-                            error "Frontend container startup failed!"
-                        }
-
-                        echo "Containers are running. Use 'docker ps' to check the status."
-                    } catch (Exception e) {
-                        echo "Error occurred while starting containers: ${e.getMessage()}"
-                        error "Container startup failed!"
                     }
+
+                    // Run the frontend container
+                    bat """
+                        docker run -d --name frontend-container --network ${NETWORK_NAME} \
+                            -p 5173:5173 ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}
+                    """
+
+                    echo "Containers are running. Use 'docker ps' to check the status."
                 }
             }
         }
