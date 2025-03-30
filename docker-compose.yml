@@ -1,3 +1,40 @@
+# # services:
+# #   api:
+# #     build:
+# #       context: ./api
+# #       dockerfile: Dockerfile
+# #     container_name: eloquent_lalande
+# #     ports:
+# #       - "4040:4040"
+# #     env_file:
+# #       - ./api/.env
+# #     depends_on:
+# #       - mongo
+
+# #   client:
+# #     build:
+# #       context: ./client
+# #       dockerfile: Dockerfile
+# #     container_name: sharp_diffie
+# #     depends_on:
+# #       - api
+# #     ports:
+# #       - "5173:5173" # Maps port 5173 on the host to port 5173 in the container
+# #     environment:
+# #       - VITE_API_URL=http://localhost:5173 # Backend API URL for the frontend
+
+# #   mongo:
+# #     image: mongo:6.0
+# #     container_name: mongo-service
+# #     ports:
+# #       - "27017:27017" # Maps port 27017 for MongoDB
+# #     volumes:
+# #       - mongo-data:/data/db # Persistent storage for MongoDB
+
+# # volumes:
+# #   mongo-data:
+
+
 # services:
 #   api:
 #     build:
@@ -5,7 +42,7 @@
 #       dockerfile: Dockerfile
 #     container_name: eloquent_lalande
 #     ports:
-#       - "4040:4040"
+#       - "4040:4040" # API port
 #     env_file:
 #       - ./api/.env
 #     depends_on:
@@ -19,21 +56,24 @@
 #     depends_on:
 #       - api
 #     ports:
-#       - "5173:5173" # Maps port 5173 on the host to port 5173 in the container
+#       - "5173:5173" # Frontend port
 #     environment:
-#       - VITE_API_URL=http://localhost:5173 # Backend API URL for the frontend
+#       - VITE_API_URL=http://eloquent_lalande:4040 # Updated to use API container name
 
 #   mongo:
 #     image: mongo:6.0
 #     container_name: mongo-service
 #     ports:
-#       - "27017:27017" # Maps port 27017 for MongoDB
+#       - "27017:27017" # MongoDB port
 #     volumes:
 #       - mongo-data:/data/db # Persistent storage for MongoDB
 
 # volumes:
 #   mongo-data:
 
+
+
+version: '3.8'
 
 services:
   api:
@@ -42,11 +82,11 @@ services:
       dockerfile: Dockerfile
     container_name: eloquent_lalande
     ports:
-      - "4040:4040" # API port
+      - "4040:4040"  # API port
     env_file:
-      - ./api/.env
-    depends_on:
-      - mongo
+      - ./api/.env  # Load MongoDB Atlas credentials
+    networks:
+      - app-network  # Use a shared network
 
   client:
     build:
@@ -56,18 +96,11 @@ services:
     depends_on:
       - api
     ports:
-      - "5173:5173" # Frontend port
+      - "5173:5173"  # Frontend port
     environment:
-      - VITE_API_URL=http://eloquent_lalande:4040 # Updated to use API container name
+      - VITE_API_URL=http://eloquent_lalande:4040  # Use API container name
+    networks:
+      - app-network  # Use a shared network
 
-  mongo:
-    image: mongo:6.0
-    container_name: mongo-service
-    ports:
-      - "27017:27017" # MongoDB port
-    volumes:
-      - mongo-data:/data/db # Persistent storage for MongoDB
-
-volumes:
-  mongo-data:
-
+networks:
+  app-network:  # Define the custom network
