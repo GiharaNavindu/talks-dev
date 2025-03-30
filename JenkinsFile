@@ -65,10 +65,10 @@ pipeline {
 
                         docker run -d --name backend-container --network app-network \
                             -e MONGO_URI=mongodb://mongo-container:27017/mydb \
-                            -p 8080:8080 ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}
+                            -p 4040:4040 ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}
 
                         docker run -d --name frontend-container --network app-network \
-                            -p 3000:3000 ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}
+                            -p 5173:5173 ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}
                     """
 
                     echo "Containers are running. Use 'docker ps' to check the status."
