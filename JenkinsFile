@@ -5,8 +5,7 @@ pipeline {
         DOCKER_USERNAME = 'devgixa'
         DOCKER_IMAGE_FRONTEND = 'devgixa/frontend-service'
         DOCKER_IMAGE_BACKEND = 'devgixa/backend-service'
-        DOCKER_IMAGE_DATABASE = 'devgixa/mongo-service'
-        BUILD_TAG = "latest"  // Using 'latest' for better readability
+        BUILD_TAG = "latest"
     }
 
     stages {
@@ -33,15 +32,6 @@ pipeline {
                 }
             }
         }
-        
-        stage('Build Database Image') {
-            steps {
-                script {
-                    bat "docker pull mongo:6.0"
-                    bat "docker tag mongo:6.0 ${DOCKER_IMAGE_DATABASE}:${BUILD_TAG}"
-                }
-            }
-        }
 
         stage('Run Locally for Testing') {
             steps {
@@ -50,21 +40,16 @@ pipeline {
                     bat """
                         docker stop frontend-container 2>nul || exit /b 0
                         docker stop backend-container 2>nul || exit /b 0
-                        docker stop mongo-container 2>nul || exit /b 0
                         docker rm frontend-container 2>nul || exit /b 0
                         docker rm backend-container 2>nul || exit /b 0
-                        docker rm mongo-container 2>nul || exit /b 0
-                        """
-
+                    """
 
                     echo "Running new containers..."
                     bat """
                         docker network create app-network || true
 
-                        docker run -d --name mongo-container --network app-network ${DOCKER_IMAGE_DATABASE}:${BUILD_TAG}
-
                         docker run -d --name backend-container --network app-network \
-                            -e MONGO_URI=mongodb://mongo-container:27017/mydb \
+                            --env-file ./api/.env \
                             -p 4040:4040 ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}
 
                         docker run -d --name frontend-container --network app-network \
@@ -96,7 +81,6 @@ pipeline {
                 script {
                     bat "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
                     bat "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
-                    bat "docker push ${DOCKER_IMAGE_DATABASE}:${BUILD_TAG}"
                 }
             }
         }
