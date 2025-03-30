@@ -56,15 +56,20 @@ pipeline {
                     echo "Running containers locally..."
 
                     // Create and run the backend container with environment variables injected from Jenkins
-                    withCredentials([string(credentialsId: 'chatenv', variable: 'DOCKER_ENV_VARS')]) {
+                    withCredentials([string(credentialsId: 'your-credential-id', variable: 'DOCKER_ENV_VARS')]) {
+                        // Assuming DOCKER_ENV_VARS contains a set of key=value pairs for the .env file
+                        def envVars = DOCKER_ENV_VARS.split('\n').collect { it.trim() }.findAll { it }
+                        def envArgs = envVars.collect { "--env ${it}" }.join(" ")
+
+                        // Run the backend container
                         bat """
                             docker run -d --name backend-container --network ${NETWORK_NAME} \
-                                --env ${DOCKER_ENV_VARS} \
+                                ${envArgs} \
                                 -p ${BACKEND_PORT}:${BACKEND_PORT} ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}
                         """
                     }
 
-                    // Run the frontend container
+                    // Run the frontend container (no environment variables needed here)
                     bat """
                         docker run -d --name frontend-container --network ${NETWORK_NAME} \
                             -p 5173:5173 ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}
