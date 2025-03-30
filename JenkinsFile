@@ -55,21 +55,22 @@ pipeline {
                 script {
                     echo "Running containers locally..."
 
-                    // Create and run the backend container with environment variables injected from Jenkins
-                    withCredentials([string(credentialsId: 'your-credential-id', variable: 'DOCKER_ENV_VARS')]) {
-                        // Assuming DOCKER_ENV_VARS contains a set of key=value pairs for the .env file
-                        def envVars = DOCKER_ENV_VARS.split('\n').collect { it.trim() }.findAll { it }
-                        def envArgs = envVars.collect { "--env ${it}" }.join(" ")
-
-                        // Run the backend container
+                    // Inject each environment variable individually using credentials
+                    withCredentials([
+                        string(credentialsId: 'MONGO_URL', variable: 'MONGO_URL'),
+                        string(credentialsId: 'JWT_SECRET', variable: 'JWT_SECRET'),
+                        string(credentialsId: 'CLIENT_URL', variable: 'CLIENT_URL')
+                    ]) {
                         bat """
                             docker run -d --name backend-container --network ${NETWORK_NAME} \
-                                ${envArgs} \
+                                --env MONGO_URL=${MONGO_URL} \
+                                --env JWT_SECRET=${JWT_SECRET} \
+                                --env CLIENT_URL=${CLIENT_URL} \
                                 -p ${BACKEND_PORT}:${BACKEND_PORT} ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}
                         """
                     }
 
-                    // Run the frontend container (no environment variables needed here)
+                    // Run the frontend container
                     bat """
                         docker run -d --name frontend-container --network ${NETWORK_NAME} \
                             -p 5173:5173 ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}
