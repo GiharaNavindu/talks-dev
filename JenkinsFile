@@ -38,17 +38,19 @@ pipeline {
                 script {
                     echo "Stopping and removing existing containers..."
                     bat """
-                        docker stop frontend-container 2>nul || exit /b 0
-                        docker stop backend-container 2>nul || exit /b 0
-                        docker rm frontend-container 2>nul || exit /b 0
-                        docker rm backend-container 2>nul || exit /b 0
+                        docker stop frontend-container || true
+                        docker stop backend-container || true
+                        docker rm frontend-container || true
+                        docker rm backend-container || true
+                    """
+
+                    echo "Checking if network 'app-network' exists and creating if necessary..."
+                    bat """
+                        docker network inspect app-network > /dev/null 2>&1 || docker network create app-network
                     """
 
                     echo "Running new containers..."
                     bat """
-                        docker network inspect app-network > /dev/null 2>&1 || docker network create app-network
-
-
                         docker run -d --name backend-container --network app-network \
                             --env-file ./api/.env \
                             -p 4040:4040 ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}
