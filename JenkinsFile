@@ -6,6 +6,8 @@ pipeline {
         DOCKER_IMAGE_FRONTEND = 'devgixa/frontend-service'
         DOCKER_IMAGE_BACKEND = 'devgixa/backend-service'
         BUILD_TAG = "latest"
+        NETWORK_NAME = 'app-network'
+        BACKEND_PORT = '4040'
     }
 
     stages {
@@ -33,22 +35,60 @@ pipeline {
             }
         }
 
+        stage('Check Network') {
+            steps {
+                script {
+                    echo "Checking if the app-network exists..."
+                    def networkExists = bat(script: "docker network ls | findstr ${NETWORK_NAME}", returnStatus: true)
+                    if (networkExists != 0) {
+                        echo "Network ${NETWORK_NAME} does not exist, creating it..."
+                        bat "docker network create ${NETWORK_NAME}"
+                    } else {
+                        echo "Network ${NETWORK_NAME} already exists."
+                    }
+                }
+            }
+        }
+
         stage('Run Locally for Testing') {
             steps {
                 script {
                     echo "Running containers locally..."
 
                     // Create and run the frontend and backend containers
-                    bat """
-                        docker run -d --name backend-container --network app-network \
-                            --env-file ./api/.env \
-                            -p 4040:4040 ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}
+                    try {
+                        bat """
+                            docker run -d --name backend-container --network ${NETWORK_NAME} \
+                                --env-file ./api/.env \
+                                -p ${BACKEND_PORT}:${BACKEND_PORT} ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}
+                        """
 
-                        docker run -d --name frontend-container --network app-network \
-                            -p 5173:5173 ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}
-                    """
+                        // Check backend container logs if it fails to start
+                        def backendRunning = bat(script: "docker ps -q -f name=backend-container", returnStatus: true)
+                        if (backendRunning != 0) {
+                            echo "Backend container failed to start. Checking logs..."
+                            bat "docker logs backend-container"
+                            error "Backend container startup failed!"
+                        }
 
-                    echo "Containers are running. Use 'docker ps' to check the status."
+                        bat """
+                            docker run -d --name frontend-container --network ${NETWORK_NAME} \
+                                -p 5173:5173 ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}
+                        """
+
+                        // Check frontend container logs
+                        def frontendRunning = bat(script: "docker ps -q -f name=frontend-container", returnStatus: true)
+                        if (frontendRunning != 0) {
+                            echo "Frontend container failed to start. Checking logs..."
+                            bat "docker logs frontend-container"
+                            error "Frontend container startup failed!"
+                        }
+
+                        echo "Containers are running. Use 'docker ps' to check the status."
+                    } catch (Exception e) {
+                        echo "Error occurred while starting containers: ${e.getMessage()}"
+                        error "Container startup failed!"
+                    }
                 }
             }
         }
