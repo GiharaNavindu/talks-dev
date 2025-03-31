@@ -2,12 +2,7 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_USERNAME = 'devgixa'
-        DOCKER_IMAGE_FRONTEND = 'devgixa/frontend-service'
-        DOCKER_IMAGE_BACKEND = 'devgixa/backend-service'
-        BUILD_TAG = "latest"
-        NETWORK_NAME = 'app-network'
-        BACKEND_PORT = '4040'
+        TERRAFORM_PATH = 'C:\\terraform_1.11.3_windows_386\\terraform.exe'
     }
 
     stages {
@@ -19,108 +14,24 @@ pipeline {
             }
         }
 
-        stage('Build Frontend Image') {
-            steps {
-                script {
-                    bat "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} ./client"
-                }
-            }
-        }
-
-        stage('Build Backend Image') {
-            steps {
-                script {
-                    bat "docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
-                }
-            }
-        }
-
-        stage('Check Network') {
-            steps {
-                script {
-                    echo "Checking if the app-network exists..."
-                    def networkExists = bat(script: "docker network ls | findstr ${NETWORK_NAME}", returnStatus: true)
-                    if (networkExists != 0) {
-                        echo "Network ${NETWORK_NAME} does not exist, creating it..."
-                        bat "docker network create ${NETWORK_NAME}"
-                    } else {
-                        echo "Network ${NETWORK_NAME} already exists."
-                    }
-                }
-            }
-        }
-
-        stage('Run Locally for Testing') {
-            steps {
-                script {
-                    echo "Running containers locally..."
-                    withCredentials([
-                        string(credentialsId: 'MONGO_URL', variable: 'MONGO_URL'),
-                        string(credentialsId: 'JWT_SECRET', variable: 'JWT_SECRET'),
-                        string(credentialsId: 'CLIENT_URL', variable: 'CLIENT_URL')
-                    ]) {
-                        bat """
-                            docker run -d --name backend-container --network ${NETWORK_NAME} \
-                                --env MONGO_URL=${MONGO_URL} \
-                                --env JWT_SECRET=${JWT_SECRET} \
-                                --env CLIENT_URL=${CLIENT_URL} \
-                                -p ${BACKEND_PORT}:${BACKEND_PORT} ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}
-                        """
-                    }
-                    bat """
-                        docker run -d --name frontend-container --network ${NETWORK_NAME} \
-                            -p 5173:5173 ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}
-                    """
-                    echo "Containers are running. Use 'docker ps' to check the status."
-                }
-            }
-        }
-
-        stage('Login to Docker Hub') {
-            steps {
-                script {
-                    withCredentials([string(credentialsId: 'Dockerpwd', variable: 'DOCKER_PASSWORD')]) {
-                        def loginResult = bat(script: "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}", returnStatus: true)
-                        if (loginResult != 0) {
-                            error "Docker login failed!"
-                        } else {
-                            echo "Successfully logged in to Docker Hub."
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Push Images to Docker Hub') {
-            steps {
-                script {
-                    bat "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
-                    bat "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
-                }
-            }
-        }
-
         stage('Provision Infrastructure') {
             steps {
-                script {
-                    echo "Checking Terraform availability..."
-                    def terraformPath = 'C:\\terraform_1.11.3_windows_386\\terraform.exe'
-                    def terraformCheck = bat(script: "where terraform", returnStatus: true)
-                    if (terraformCheck != 0) {
-                        error "Terraform not found in PATH. Using manual path: ${terraformPath}"
-                    }
-                }
-                
                 dir('terraform') {
-                    echo "Initializing Terraform..."
-                    bat 'C:\\Users\\MSI20\\terraform.exe init'
-                    
-                    echo "Applying Terraform configuration..."
-                    bat 'C:\\Users\\MSI20\\terraform.exe apply -auto-approve'
-                    
                     script {
-                        echo "Fetching EC2 public IP..."
-                        def ec2PublicIp = bat(script: 'C:\\Users\\MSI20\\terraform.exe output -raw instance_ip', returnStdout: true).trim()
+                        echo "Checking if Terraform exists at ${TERRAFORM_PATH}"
+                        def terraformExists = bat(script: "if exist ${TERRAFORM_PATH} echo Found", returnStdout: true).trim()
+                        if (terraformExists != "Found") {
+                            error "Terraform not found at ${TERRAFORM_PATH}. Check your path!"
+                        }
+
+                        echo "Initializing Terraform..."
+                        bat "${TERRAFORM_PATH} init"
+
+                        echo "Applying Terraform configuration..."
+                        bat "${TERRAFORM_PATH} apply -auto-approve"
+
+                        echo "Fetching EC2 Public IP..."
+                        def ec2PublicIp = bat(script: "${TERRAFORM_PATH} output -raw instance_ip", returnStdout: true).trim()
                         env.EC2_PUBLIC_IP = ec2PublicIp
                         echo "Provisioned EC2 Instance IP: ${env.EC2_PUBLIC_IP}"
                     }
@@ -131,8 +42,7 @@ pipeline {
 
     post {
         always {
-            bat 'docker logout'
-            echo "Logged out from Docker Hub."
+            echo "Pipeline execution completed!"
         }
     }
 }
