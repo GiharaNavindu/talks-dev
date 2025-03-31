@@ -227,6 +227,7 @@ const jwtSecret = process.env.JWT_SECRET;
 const bcryptSalt = bcrypt.genSaltSync(10);
 
 const app = express();
+module.exports = app;
 app.use('/uploads', express.static(__dirname + '/uploads'));
 app.use(express.json());
 app.use(cookieParser());
@@ -342,8 +343,9 @@ app.post('/register', async (req, res) => {
   }
 });
 
-const server = app.listen(4040, () => {
-  console.log('Server is running on port 4040');
+const PORT = process.env.PORT || 4040;
+const server = app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
 
 const wss = new ws.WebSocketServer({ server });
