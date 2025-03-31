@@ -103,13 +103,15 @@ pipeline {
         stage('Provision Infrastructure') {
             steps {
                 dir('terraform') {
+                    echo "Ensuring Terraform is available..."
+                    bat 'where terraform || echo Terraform not found, ensure it is installed and in PATH'
                     echo "Initializing Terraform..."
-                    bat 'terraform init'
+                    bat 'cmd /c terraform init'
                     echo "Applying Terraform configuration..."
-                    bat 'terraform apply -auto-approve'
+                    bat 'cmd /c terraform apply -auto-approve'
                     script {
                         echo "Fetching EC2 public IP..."
-                        def ec2PublicIp = bat(script: 'terraform output -raw instance_ip', returnStdout: true).trim()
+                        def ec2PublicIp = bat(script: 'cmd /c terraform output -raw instance_ip', returnStdout: true).trim()
                         env.EC2_PUBLIC_IP = ec2PublicIp
                         echo "Provisioned EC2 Instance IP: ${env.EC2_PUBLIC_IP}"
                     }
