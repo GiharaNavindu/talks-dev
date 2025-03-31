@@ -3,10 +3,9 @@ provider "aws" {
 }
 
 resource "aws_instance" "chat_app" {
-  ami           = "ami-0c55b159cbfafe1f0"
-  instance_type = "t2.micro"
-  key_name      = "chat-app-key"
-  subnet_id     = "subnet-093eb2291596afd78"  # Replace with a valid subnet
+  ami           = "ami-0c55b159cbfafe1f0" # Amazon Linux 2 AMI (free tier eligible)
+  instance_type = "t2.micro"              # Free tier eligible
+  key_name      = "chat-app-key"          # Create this in AWS Console
   security_groups = [aws_security_group.chat_sg.name]
 
   tags = {
@@ -60,7 +59,7 @@ resource "aws_lb" "chat_alb" {
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.chat_sg.id]
-  subnets            = ["subnet-093eb2291596afd78", "subnet-0f58ccc340879ddf9"]
+  subnets            = ["subnet-093eb2291596afd78", "subnet-0f58ccc340879ddf9"] # Replace with your VPC subnets
 
   enable_deletion_protection = false
 }
@@ -69,7 +68,7 @@ resource "aws_lb_target_group" "chat_tg" {
   name     = "chat-tg"
   port     = 5173
   protocol = "HTTP"
-  vpc_id   = "vpc-086f5ba8046dda481" # Replace with your actual VPC ID
+  vpc_id   = "vpc-086f5ba8046dda481" # Replace with your VPC ID
 }
 
 resource "aws_lb_listener" "chat_listener" {
