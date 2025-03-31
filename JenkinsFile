@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        TERRAFORM_PATH = 'C:\\terraform_1.11.3_windows_386'
+        TERRAFORM_PATH = 'C:\\terraform_1.11.3_windows_386\\terraform.exe'
     }
 
     stages {
