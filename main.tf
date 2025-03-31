@@ -59,7 +59,7 @@ resource "aws_lb" "chat_alb" {
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.chat_sg.id]
-  subnets            = ["subnet-12345678", "subnet-87654321"] # Replace with your VPC subnets
+  subnets            = ["subnet-093eb2291596afd78", "subnet-0f58ccc340879ddf9"] # Replace with your VPC subnets
 
   enable_deletion_protection = false
 }
@@ -68,7 +68,7 @@ resource "aws_lb_target_group" "chat_tg" {
   name     = "chat-tg"
   port     = 5173
   protocol = "HTTP"
-  vpc_id   = "vpc-12345678" # Replace with your VPC ID
+  vpc_id   = "vpc-086f5ba8046dda481" # Replace with your VPC ID
 }
 
 resource "aws_lb_listener" "chat_listener" {
