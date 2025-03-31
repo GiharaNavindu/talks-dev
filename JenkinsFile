@@ -102,16 +102,25 @@ pipeline {
 
         stage('Provision Infrastructure') {
             steps {
+                script {
+                    echo "Checking Terraform availability..."
+                    def terraformPath = 'C:\\Users\\MSI20\\terraform.exe'
+                    def terraformCheck = bat(script: "where terraform", returnStatus: true)
+                    if (terraformCheck != 0) {
+                        error "Terraform not found in PATH. Using manual path: ${terraformPath}"
+                    }
+                }
+                
                 dir('terraform') {
-                    echo "Ensuring Terraform is available..."
-                    bat 'where terraform || echo Terraform not found, ensure it is installed and in PATH'
                     echo "Initializing Terraform..."
-                    bat 'cmd /c terraform init'
+                    bat 'C:\\Users\\MSI20\\terraform.exe init'
+                    
                     echo "Applying Terraform configuration..."
-                    bat 'cmd /c terraform apply -auto-approve'
+                    bat 'C:\\Users\\MSI20\\terraform.exe apply -auto-approve'
+                    
                     script {
                         echo "Fetching EC2 public IP..."
-                        def ec2PublicIp = bat(script: 'cmd /c terraform output -raw instance_ip', returnStdout: true).trim()
+                        def ec2PublicIp = bat(script: 'C:\\Users\\MSI20\\terraform.exe output -raw instance_ip', returnStdout: true).trim()
                         env.EC2_PUBLIC_IP = ec2PublicIp
                         echo "Provisioned EC2 Instance IP: ${env.EC2_PUBLIC_IP}"
                     }
