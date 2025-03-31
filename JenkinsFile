@@ -8,6 +8,7 @@ pipeline {
         BUILD_TAG = "latest"
         NETWORK_NAME = 'app-network'
         BACKEND_PORT = '4040'
+        TERRAFORM_PATH = 'C:\\terraform_1.11.3_windows_386\\terraform.exe'
     }
 
     stages {
@@ -19,28 +20,38 @@ pipeline {
             }
         }
 
-        stage('Build and Push Docker Images') {
+        stage('Build Docker Images') {
             steps {
                 script {
                     bat "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} ./client"
                     bat "docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
-                    withCredentials([string(credentialsId: 'Dockerpwd', variable: 'DOCKER_PASSWORD')]) {
-                        bat "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
-                        bat "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
-                        bat "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
-                    }
                 }
             }
         }
 
-        stage('Provision Infrastructure') {
+        stage('Push Images to Docker Hub') {
+            steps {
+                script {
+                    withCredentials([string(credentialsId: 'Dockerpwd', variable: 'DOCKER_PASSWORD')]) {
+                        bat "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
+                    }
+                    bat "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
+                    bat "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
+                }
+            }
+        }
+
+        stage('Provision Infrastructure with Terraform') {
             steps {
                 script {
                     dir('terraform') {
-                        bat 'C:\\terraform_1.11.3_windows_386\\terraform.exe init'
-                        bat 'C:\\terraform_1.11.3_windows_386\\terraform.exe apply -auto-approve'
-                        def ec2PublicIp = bat(script: 'C:\\terraform_1.11.3_windows_386\\terraform.exe output -raw instance_ip', returnStdout: true).trim()
+                        bat "${TERRAFORM_PATH} init"
+                        bat "${TERRAFORM_PATH} apply -auto-approve"
+                        
+                        // Capture the EC2 public IP
+                        def ec2PublicIp = bat(script: "${TERRAFORM_PATH} output -raw instance_ip", returnStdout: true).trim()
                         env.EC2_PUBLIC_IP = ec2PublicIp
+                        echo "Provisioned EC2 Instance IP: ${env.EC2_PUBLIC_IP}"
                     }
                 }
             }
@@ -49,13 +60,14 @@ pipeline {
         stage('Deploy to EC2') {
             steps {
                 script {
+                    def ec2Ip = env.EC2_PUBLIC_IP
                     sshagent(['chat-app-key']) {
                         sh """
-                        ssh -o StrictHostKeyChecking=no ec2-user@${env.EC2_PUBLIC_IP} '
+                        ssh -o StrictHostKeyChecking=no ec2-user@${ec2Ip} '
                             docker pull ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} &&
                             docker pull ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} &&
-                            docker run -d --name backend-container -p 4040:4040 ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} &&
-                            docker run -d --name frontend-container -p 5173:5173 ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}
+                            docker run -d -p 4040:4040 --name backend-container ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} &&
+                            docker run -d -p 5173:5173 --name frontend-container ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}
                         '
                         """
                     }
