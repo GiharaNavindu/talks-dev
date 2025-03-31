@@ -120,7 +120,7 @@ pipeline {
                     
                     script {
                         echo "Fetching EC2 public IP..."
-                        def ec2PublicIp = bat(script: 'C:\\Users\\MSI20\\terraform.exe output -raw instance_ip', returnStdout: true).trim()
+                        def ec2PublicIp = bat(script: 'C:\terraform_1.11.3_windows_386\terraform.exe output -raw instance_ip', returnStdout: true).trim()
                         env.EC2_PUBLIC_IP = ec2PublicIp
                         echo "Provisioned EC2 Instance IP: ${env.EC2_PUBLIC_IP}"
                     }
