@@ -105,7 +105,8 @@ pipeline {
                 script {
                     echo "Checking Terraform availability..."
                     def terraformPath = 'C:\\Users\\MSI20\\terraform.exe'
-                    def terraformCheck = bat(script: "where terraform", returnStatus: true)
+                    def terraformCheck = bat(script: "where terraform", returnStatus: true
+                    bat 'where terraform'
                     if (terraformCheck != 0) {
                         error "Terraform not found in PATH. Using manual path: ${terraformPath}"
                     }
