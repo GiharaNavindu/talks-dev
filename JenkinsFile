@@ -9,8 +9,8 @@ pipeline {
         NETWORK_NAME = 'app-network'
         BACKEND_PORT = '4040'
         TERRAFORM_PATH = 'C:\\terraform_1.11.3_windows_386\\terraform.exe'
-        SSH_USER = 'ubuntu'  // Default user for Ubuntu AMIs
-        SSH_KEY = 'chat-app-key.pem' // Update with your key path
+        SSH_USER = 'ubuntu'
+        SSH_KEY = 'chat-app-key.pem'
     }
 
     stages {
@@ -22,13 +22,27 @@ pipeline {
             }
         }
 
-        stage('Build and Push Docker Images') {
-            steps {
-                script {
-                    bat "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} ./client"
-                    bat "docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
+        stage('Build Docker Images') {
+            parallel {
+                stage('Build Frontend') {
+                    steps {
+                        script {
+                            bat "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} ./client"
+                        }
+                    }
                 }
+                stage('Build Backend') {
+                    steps {
+                        script {
+                            bat "docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
+                        }
+                    }
+                }
+            }
+        }
 
+        stage('Push Docker Images') {
+            steps {
                 script {
                     withCredentials([string(credentialsId: 'Dockerpwd', variable: 'DOCKER_PASSWORD')]) {
                         bat "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
@@ -41,14 +55,9 @@ pipeline {
 
         stage('Provision EC2 Instance') {
             steps {
-                script {
-                    echo "Running Terraform inside the 'terraform' directory..."
-                }
-
-                dir('terraform') {  // Ensure Terraform runs in the correct directory
+                dir('terraform') {
                     bat "${TERRAFORM_PATH} init"
                     bat "${TERRAFORM_PATH} apply -auto-approve"
-
                     script {
                         env.EC2_PUBLIC_IP = bat(script: "${TERRAFORM_PATH} output -raw instance_ip", returnStdout: true).trim()
                         echo "Provisioned EC2 Instance IP: ${env.EC2_PUBLIC_IP}"
@@ -61,20 +70,18 @@ pipeline {
             steps {
                 script {
                     echo "Deploying backend and frontend on EC2..."
-
-                    bat """
-                        echo "Installing Docker on EC2..."
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "sudo apt update && sudo apt install -y docker.io"
-                        
-                        echo "Pulling images..."
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker pull ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker pull ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
-                        
-                        echo "Starting containers..."
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker network create ${NETWORK_NAME} || true"
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker run -d --name backend-container --network ${NETWORK_NAME} -p ${BACKEND_PORT}:${BACKEND_PORT} ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker run -d --name frontend-container --network ${NETWORK_NAME} -p 80:5173 ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
+                    def commands = """
+                        echo "Installing Docker on EC2..." &&
+                        sudo apt update && sudo apt install -y docker.io &&
+                        echo "Pulling images..." &&
+                        docker pull ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} &&
+                        docker pull ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} &&
+                        echo "Starting containers..." &&
+                        docker network create ${NETWORK_NAME} || true &&
+                        docker run -d --name backend-container --network ${NETWORK_NAME} -p ${BACKEND_PORT}:${BACKEND_PORT} ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} &&
+                        docker run -d --name frontend-container --network ${NETWORK_NAME} -p 80:5173 ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}
                     """
+                    ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "${commands}"
                 }
             }
         }
