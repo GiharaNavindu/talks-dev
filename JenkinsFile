@@ -1,62 +1,133 @@
+// pipeline {
+//     agent any
+
+//     environment {
+//         DOCKER_USERNAME = 'devgixa'
+//         DOCKER_IMAGE_FRONTEND = 'devgixa/frontend-service'
+//         DOCKER_IMAGE_BACKEND = 'devgixa/backend-service'
+//         BUILD_TAG = "latest"
+//         NETWORK_NAME = 'app-network'
+//         BACKEND_PORT = '4040'
+//         TERRAFORM_PATH = 'C:\\terraform_1.11.3_windows_386\\terraform.exe'
+//         SSH_USER = 'ubuntu'  // Default user for Ubuntu AMIs
+//         SSH_KEY = 'chat-app-key.pem' // Update with your key path
+//     }
+
+//     stages {
+//         stage('SCM Checkout') {
+//             steps {
+//                 retry(3) {
+//                     git branch: 'main', url: 'https://github.com/GiharaNavindu/talks-dev.git'
+//                 }
+//             }
+//         }
+
+//         stage('Build and Push Docker Images') {
+//             steps {
+//                 script {
+//                     bat "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} ./client"
+//                     bat "docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
+//                 }
+
+//                 script {
+//                     withCredentials([string(credentialsId: 'Dockerpwd', variable: 'DOCKER_PASSWORD')]) {
+//                         bat "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
+//                     }
+//                     bat "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
+//                     bat "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
+//                 }
+//             }
+//         }
+
+//         stage('Provision EC2 Instance') {
+//             steps {
+//                 script {
+//                     echo "Running Terraform inside the 'terraform' directory..."
+//                 }
+
+//                 dir('terraform') {  // Ensure Terraform runs in the correct directory
+//                     // Use AWS credentials
+//                     withCredentials([ 
+//                         string(credentialsId: 'aws-access-key', variable: 'AWS_ACCESS_KEY_ID'),
+//                         string(credentialsId: 'aws-secret-key', variable: 'AWS_SECRET_ACCESS_KEY')
+//                     ]) {
+//                         // Initialize Terraform
+//                         bat "${TERRAFORM_PATH} init"
+//                         // Apply Terraform configuration
+//                         bat "${TERRAFORM_PATH} apply -auto-approve"
+
+//                         // Get the EC2 instance IP
+//                         script {
+//                             env.EC2_PUBLIC_IP = bat(script: "${TERRAFORM_PATH} output -raw instance_ip", returnStdout: true).trim()
+//                             echo "Provisioned EC2 Instance IP: ${env.EC2_PUBLIC_IP}"
+//                         }
+//                     }
+//                 }
+//             }
+//         }
+
+//         stage('Deploy on EC2') {
+//             steps {
+//                 script {
+//                     echo "Deploying backend and frontend on EC2..."
+
+//                     bat """
+//                         echo "Installing Docker on EC2..."
+//                         ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "powershell -Command 'Install-Package -Name docker-desktop -Force -Scope CurrentUser'"
+                        
+//                         echo "Pulling images..."
+//                         ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker pull ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
+//                         ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker pull ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
+                        
+//                         echo "Starting containers..."
+//                         ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker network create ${NETWORK_NAME} || true"
+//                         ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker run -d --name backend-container --network ${NETWORK_NAME} -p ${BACKEND_PORT}:${BACKEND_PORT} ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
+//                         ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker run -d --name frontend-container --network ${NETWORK_NAME} -p 80:5173 ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
+//                     """
+//                 }
+//             }
+//         }
+//     }
+
+//     post {
+//         always {
+//             bat 'docker logout'
+//             echo "Logged out from Docker Hub."
+//         }
+//     }
+// }
+
+
+
+
 pipeline {
     agent any
 
     environment {
-        DOCKER_USERNAME = 'devgixa'
-        DOCKER_IMAGE_FRONTEND = 'devgixa/frontend-service'
-        DOCKER_IMAGE_BACKEND = 'devgixa/backend-service'
-        BUILD_TAG = "latest"
+        TERRAFORM_PATH = 'C:\\terraform_1.11.3_windows_386\\terraform.exe'
+        DOCKER_IMAGE_BACKEND = 'devgixa/backend-service:latest'
+        DOCKER_IMAGE_FRONTEND = 'devgixa/frontend-service:latest'
         NETWORK_NAME = 'app-network'
         BACKEND_PORT = '4040'
-        TERRAFORM_PATH = 'C:\\terraform_1.11.3_windows_386\\terraform.exe'
-        SSH_USER = 'ubuntu'  // Default user for Ubuntu AMIs
-        SSH_KEY = 'chat-app-key.pem' // Update with your key path
+        SSH_KEY = 'C:\\path\\to\\chat-app-key.pem'
+        ANSIBLE_PLAYBOOK = 'C:\\path\\to\\ansible\\deploy.yml'
     }
 
     stages {
-        stage('SCM Checkout') {
-            steps {
-                retry(3) {
-                    git branch: 'main', url: 'https://github.com/GiharaNavindu/talks-dev.git'
-                }
-            }
-        }
-
-        stage('Build and Push Docker Images') {
-            steps {
-                script {
-                    bat "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} ./client"
-                    bat "docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
-                }
-
-                script {
-                    withCredentials([string(credentialsId: 'Dockerpwd', variable: 'DOCKER_PASSWORD')]) {
-                        bat "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
-                    }
-                    bat "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
-                    bat "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
-                }
-            }
-        }
-
         stage('Provision EC2 Instance') {
             steps {
                 script {
-                    echo "Running Terraform inside the 'terraform' directory..."
+                    echo "Initializing Terraform..."
                 }
 
-                dir('terraform') {  // Ensure Terraform runs in the correct directory
-                    // Use AWS credentials
-                    withCredentials([ 
+                dir('terraform') {
+                    withCredentials([
                         string(credentialsId: 'aws-access-key', variable: 'AWS_ACCESS_KEY_ID'),
                         string(credentialsId: 'aws-secret-key', variable: 'AWS_SECRET_ACCESS_KEY')
                     ]) {
-                        // Initialize Terraform
                         bat "${TERRAFORM_PATH} init"
-                        // Apply Terraform configuration
                         bat "${TERRAFORM_PATH} apply -auto-approve"
 
-                        // Get the EC2 instance IP
                         script {
                             env.EC2_PUBLIC_IP = bat(script: "${TERRAFORM_PATH} output -raw instance_ip", returnStdout: true).trim()
                             echo "Provisioned EC2 Instance IP: ${env.EC2_PUBLIC_IP}"
@@ -66,33 +137,39 @@ pipeline {
             }
         }
 
-        stage('Deploy on EC2') {
+        stage('Deploy to EC2') {
             steps {
                 script {
-                    echo "Deploying backend and frontend on EC2..."
-
-                    bat """
-                        echo "Installing Docker on EC2..."
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "powershell -Command 'Install-Package -Name docker-desktop -Force -Scope CurrentUser'"
-                        
-                        echo "Pulling images..."
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker pull ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker pull ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
-                        
-                        echo "Starting containers..."
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker network create ${NETWORK_NAME} || true"
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker run -d --name backend-container --network ${NETWORK_NAME} -p ${BACKEND_PORT}:${BACKEND_PORT} ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker run -d --name frontend-container --network ${NETWORK_NAME} -p 80:5173 ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
-                    """
+                    echo "Deploying Docker containers on EC2..."
                 }
+
+                bat """
+                    echo "Installing Docker on EC2..."
+                    ssh -i ${SSH_KEY} ubuntu@${EC2_PUBLIC_IP} "sudo apt update && sudo apt install -y docker.io"
+
+                    echo "Pulling Docker images..."
+                    ssh -i ${SSH_KEY} ubuntu@${EC2_PUBLIC_IP} "docker pull ${DOCKER_IMAGE_BACKEND}"
+                    ssh -i ${SSH_KEY} ubuntu@${EC2_PUBLIC_IP} "docker pull ${DOCKER_IMAGE_FRONTEND}"
+
+                    echo "Setting up Docker network..."
+                    ssh -i ${SSH_KEY} ubuntu@${EC2_PUBLIC_IP} "docker network create ${NETWORK_NAME} || true"
+
+                    echo "Starting backend container..."
+                    ssh -i ${SSH_KEY} ubuntu@${EC2_PUBLIC_IP} "docker run -d --name backend-container --network ${NETWORK_NAME} -p ${BACKEND_PORT}:${BACKEND_PORT} ${DOCKER_IMAGE_BACKEND}"
+
+                    echo "Starting frontend container..."
+                    ssh -i ${SSH_KEY} ubuntu@${EC2_PUBLIC_IP} "docker run -d --name frontend-container --network ${NETWORK_NAME} -p 80:5173 ${DOCKER_IMAGE_FRONTEND}"
+                """
             }
         }
-    }
 
-    post {
-        always {
-            bat 'docker logout'
-            echo "Logged out from Docker Hub."
+        stage('Deploy using Ansible') {
+            steps {
+                script {
+                    echo "Deploying application with Ansible..."
+                }
+                bat "ansible-playbook -i ${EC2_PUBLIC_IP}, --private-key=${SSH_KEY} ${ANSIBLE_PLAYBOOK}"
+            }
         }
     }
 }
