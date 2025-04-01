@@ -2,16 +2,23 @@ provider "aws" {
   region = "us-east-1"
 }
 
-resource "aws_instance" "chat_app" {
-  ami           = "ami-071226ecf16aa7d96" # Amazon Linux 2 AMI (free tier eligible)
-  instance_type = "t2.micro"              # Free tier eligible
-  key_name      = "chat-app-key"          # Create this in AWS Console
-  security_groups = [aws_security_group.chat_sg.name]
+resource "aws_instance" "my_ec2" {
+  ami           = "ami-071226ecf16aa7d96"  # Free-tier Ubuntu AMI (us-east-1)
+  instance_type = "t2.micro"
+  key_name      = "chat-app-key"  # Change to your key pair name
 
   tags = {
-    Name = "ChatAppServer"
+    Name = "Terraform-EC2"
   }
 }
+
+
+
+
+
+
+
+
 
 resource "aws_security_group" "chat_sg" {
   name = "chat-app-sg"
