@@ -8,7 +8,6 @@ pipeline {
         BUILD_TAG = "latest"
         NETWORK_NAME = 'app-network'
         BACKEND_PORT = '4040'
-        TERRAFORM_PATH = 'C:\\terraform_1.11.3_windows_386\\terraform.exe'
         SSH_USER = 'ubuntu'  // Default user for Ubuntu AMIs
         SSH_KEY = 'chat-app-key.pem' // Update with your key path
     }
@@ -45,20 +44,18 @@ pipeline {
                     echo "Running Terraform inside the 'terraform' directory..."
                 }
 
-                dir('terraform') {  // Ensure Terraform runs in the correct directory
-                    // Use AWS credentials
+                dir('terraform') {
                     withCredentials([ 
                         string(credentialsId: 'aws-access-key', variable: 'AWS_ACCESS_KEY_ID'),
                         string(credentialsId: 'aws-secret-key', variable: 'AWS_SECRET_ACCESS_KEY')
                     ]) {
-                        // Initialize Terraform
-                        bat "${TERRAFORM_PATH} init"
-                        // Apply Terraform configuration
-                        bat "${TERRAFORM_PATH} apply -auto-approve"
+                        terraform(version: 'Terraform-1.11.3', installationStep: true)
 
-                        // Get the EC2 instance IP
+                        terraformInit()
+                        terraformApply(autoApprove: true)
+
                         script {
-                            env.EC2_PUBLIC_IP = bat(script: "${TERRAFORM_PATH} output -raw instance_ip", returnStdout: true).trim()
+                            env.EC2_PUBLIC_IP = terraformOutput(name: 'instance_ip').trim()
                             echo "Provisioned EC2 Instance IP: ${env.EC2_PUBLIC_IP}"
                         }
                     }
