@@ -11,6 +11,8 @@ pipeline {
         TERRAFORM_PATH = 'C:\\terraform_1.11.3_windows_386\\terraform.exe'
         SSH_USER = 'ubuntu'  // Default user for Ubuntu AMIs
         SSH_KEY = 'chat-app-key.pem' // Update with your key path
+        PROVIDER_VERSION = "3.0.0"  // Specify your AWS provider version
+        PROVIDER_PATH = ".terraform/providers/hashicorp/aws/${PROVIDER_VERSION}/linux_amd64/terraform-provider-aws"
     }
 
     stages {
@@ -18,6 +20,31 @@ pipeline {
             steps {
                 retry(3) {
                     git branch: 'main', url: 'https://github.com/GiharaNavindu/talks-dev.git'
+                }
+            }
+        }
+
+        stage('Check and Install Terraform Provider') {
+            steps {
+                script {
+                    echo "Checking if AWS provider is installed..."
+                    
+                    // Check if the provider is already installed
+                    def providerInstalled = fileExists(PROVIDER_PATH)
+                    
+                    if (!providerInstalled) {
+                        echo "Provider not found. Downloading provider..."
+
+                        // Download the provider manually if not found
+                        bat """
+                            mkdir -p .terraform/providers/hashicorp/aws/${PROVIDER_VERSION}/linux_amd64
+                            curl -L https://releases.hashicorp.com/terraform-provider-aws/${PROVIDER_VERSION}/terraform-provider-aws_${PROVIDER_VERSION}_linux_amd64.zip -o terraform-provider-aws.zip
+                            unzip terraform-provider-aws.zip -d .terraform/providers/hashicorp/aws/${PROVIDER_VERSION}/linux_amd64/
+                            rm terraform-provider-aws.zip
+                        """
+                    } else {
+                        echo "Provider is already installed, skipping download."
+                    }
                 }
             }
         }
@@ -46,7 +73,7 @@ pipeline {
                 }
 
                 dir('terraform') {  // Ensure Terraform runs in the correct directory
-                    bat "${TERRAFORM_PATH} init"
+                    bat "${TERRAFORM_PATH} init -upgrade"
                     bat "${TERRAFORM_PATH} apply -auto-approve"
 
                     script {
