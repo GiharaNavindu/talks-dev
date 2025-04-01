@@ -1,140 +1,112 @@
 pipeline {
-    agent {
-        label 'aws_linux_agents' // Target agents with pre-installed dependencies
+    agent any
+
+    tools {
+        // Install via Jenkins Global Tool Configuration (Name: terraform-1.11.3)
+        terraform 'terraform-1.11.3' 
     }
 
     environment {
         DOCKER_USERNAME = 'devgixa'
         DOCKER_IMAGE_FRONTEND = 'devgixa/frontend-service'
         DOCKER_IMAGE_BACKEND = 'devgixa/backend-service'
-        BUILD_TAG = "latest-${env.BUILD_ID}" // Unique tag per build
+        BUILD_TAG = "latest"
         NETWORK_NAME = 'app-network'
         BACKEND_PORT = '4040'
         SSH_USER = 'ubuntu'
-        TF_PLUGIN_CACHE_DIR = "${WORKSPACE}/.terraform.d/plugin-cache" // Cache directory
-    }
-
-    tools {
-        terraform 'tf_1.11.3' // Configured in Jenkins Global Tools
+        SSH_KEY = 'chat-app-key.pem'
+        TF_PLUGIN_CACHE_DIR = "${WORKSPACE}\\.terraform-cache" // Caching directory
     }
 
     stages {
         stage('SCM Checkout') {
             steps {
-                checkout([
-                    $class: 'GitSCM',
-                    branches: [[name: 'main']],
-                    extensions: [
-                        [
-                            $class: 'CleanBeforeCheckout',
-                            deleteUntrackedNestedRepositories: true
-                        ]
-                    ],
-                    userRemoteConfigs: [[
-                        url: 'https://github.com/GiharaNavindu/talks-dev.git',
-                        credentialsId: 'github-credentials'
-                    ]]
-                ])
+                retry(3) {
+                    git branch: 'main', url: 'https://github.com/GiharaNavindu/talks-dev.git'
+                }
+                // Create Terraform cache directory
+                bat "if not exist \"${TF_PLUGIN_CACHE_DIR}\" mkdir ${TF_PLUGIN_CACHE_DIR}"
             }
         }
 
         stage('Build and Push Docker Images') {
             steps {
                 script {
-                    parallel(
-                        frontend: {
-                            docker.build("${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}", "./client")
-                            docker.withRegistry('https://registry-1.docker.io/v2/', 'dockerhub-creds') {
-                                docker.image("${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}").push()
-                            }
-                        },
-                        backend: {
-                            docker.build("${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}", "./api")
-                            docker.withRegistry('https://registry-1.docker.io/v2/', 'dockerhub-creds') {
-                                docker.image("${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}").push()
-                            }
-                        }
-                    )
+                    bat "docker build --no-cache -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} ./client"
+                    bat "docker build --no-cache -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
                 }
-            }
-        }
 
-        stage('Terraform Provisioning') {
-            environment {
-                AWS_REGION = 'us-east-1'
-            }
-            
-            stages {
-                stage('Initialize') {
-                    steps {
-                        dir('terraform') {
-                            script {
-                                // Reuse existing initialization if available
-                                sh 'terraform version'
-                                sh 'mkdir -p ${TF_PLUGIN_CACHE_DIR}'
-                                sh '''
-                                    if [ ! -d ".terraform" ]; then
-                                        terraform init -backend-config="region=${AWS_REGION}" \
-                                        -plugin-dir=${TF_PLUGIN_CACHE_DIR}
-                                    fi
-                                '''
-                            }
-                        }
+                script {
+                    withCredentials([string(credentialsId: 'Dockerpwd', variable: 'DOCKER_PASSWORD')]) {
+                        bat "docker login -u ${DOCKER_USERNAME} -p %DOCKER_PASSWORD%"
                     }
-                }
-
-                stage('Apply') {
-                    steps {
-                        dir('terraform') {
-                            withCredentials([[
-                                $class: 'AmazonWebServicesCredentialsBinding',
-                                accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                            ]]) {
-                                sh 'terraform apply -auto-approve -compact-warnings'
-                                script {
-                                    env.EC2_PUBLIC_IP = sh(
-                                        script: 'terraform output -raw instance_ip',
-                                        returnStdout: true
-                                    ).trim()
-                                }
-                            }
-                        }
+                    timeout(10) {
+                        bat "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
+                        bat "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
                     }
                 }
             }
         }
 
-        stage('EC2 Deployment') {
+        stage('Provision EC2 Instance') {
+            steps {
+                dir('terraform') {
+                    script {
+                        // Initialize only if not cached
+                        bat """
+                          set TF_PLUGIN_CACHE_DIR=%TF_PLUGIN_CACHE_DIR%
+                          if not exist .terraform (
+                              terraform init
+                          )
+                        """
+                        
+                        // Apply with auto-approve and refresh state
+                        bat "terraform apply -refresh=true -auto-approve"
+                        
+                        // Get instance IP
+                        env.EC2_PUBLIC_IP = bat(
+                            script: "terraform output -raw instance_ip",
+                            returnStdout: true
+                        ).trim()
+                        echo "Provisioned IP: ${env.EC2_PUBLIC_IP}"
+                    }
+                }
+            }
+        }
+
+        stage('Deploy on EC2') {
             steps {
                 script {
-                    withCredentials([file(credentialsId: 'ec2-ssh-key', variable: 'SSH_KEY')]) {
-                        sh """
-                            # Install Docker
-                            ssh -o StrictHostKeyChecking=no -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} '
-                                sudo apt-get update -qq -y
-                                sudo apt-get install -qq -y docker.io
-                                sudo systemctl enable docker
-                                sudo usermod -aG docker ${SSH_USER}
-                            '
+                    bat """
+                        echo Installing Docker on EC2 instance...
+                        ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ${SSH_USER}@${env.EC2_PUBLIC_IP} << EOF
+                        sudo apt-get update
+                        sudo apt-get install -y docker.io
+                        sudo systemctl start docker
+                        sudo usermod -aG docker ubuntu
+                        exit
+                        EOF
 
-                            # Deploy Services
-                            ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} '
-                                docker network create ${NETWORK_NAME} || true
-                                docker run -d --rm \
-                                    --name backend \
-                                    --network ${NETWORK_NAME} \
-                                    -p ${BACKEND_PORT}:${BACKEND_PORT} \
-                                    ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}
-                                
-                                docker run -d --rm \
-                                    --name frontend \
-                                    --network ${NETWORK_NAME} \
-                                    -p 80:5173 \
-                                    ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}
-                            '
-                        """
-                    }
+                        echo Pulling images...
+                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "
+                            docker pull ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}
+                            docker pull ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}
+                        "
+
+                        echo Starting containers...
+                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "
+                            docker network create ${NETWORK_NAME} || true
+                            docker run -d --rm --name backend \\
+                                --network ${NETWORK_NAME} \\
+                                -p ${BACKEND_PORT}:${BACKEND_PORT} \\
+                                ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}
+                            
+                            docker run -d --rm --name frontend \\
+                                --network ${NETWORK_NAME} \\
+                                -p 80:5173 \\
+                                ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}
+                        "
+                    """
                 }
             }
         }
@@ -142,18 +114,15 @@ pipeline {
 
     post {
         always {
-            script {
-                docker.withRegistry('https://registry-1.docker.io/v2/', 'dockerhub-creds') {
-                    sh 'docker logout'
-                }
-            }
-            cleanWs()
-        }
-        success {
-            slackSend(color: 'good', message: "Deployment SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}")
+            bat 'docker logout'
+            // Cleanup Docker cache
+            bat 'docker system prune -f'
+            echo "Pipeline completed with status: ${currentBuild.currentResult}"
         }
         failure {
-            slackSend(color: 'danger', message: "Deployment FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}")
+            emailext body: 'Pipeline failed. Check ${BUILD_URL}',
+                    subject: 'Pipeline Failed: ${JOB_NAME}',
+                    to: 'your-team@example.com'
         }
     }
 }
