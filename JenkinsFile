@@ -11,6 +11,7 @@ pipeline {
         TERRAFORM_PATH = 'C:\\terraform_1.11.3_windows_386\\terraform.exe'
         SSH_USER = 'ubuntu'  // Default user for Ubuntu AMIs
         SSH_KEY = 'chat-app-key.pem' // Update with your key path
+        TF_PLUGIN_CACHE_DIR = 'C:\\terraform-plugin-cache'
     }
 
     stages {
