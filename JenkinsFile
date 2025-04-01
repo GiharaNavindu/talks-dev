@@ -10,14 +10,52 @@ pipeline {
         BACKEND_PORT = '4040'
         TERRAFORM_PATH = 'C:\\terraform_1.11.3_windows_386\\terraform.exe'
         SSH_USER = 'ubuntu'  // Default user for Ubuntu AMIs
-        SSH_KEY = 'chat-app-key.pem' // Update with your key path
+        SSH_KEY = 'C:\\path\\to\\chat-app-key.pem' // Update with your private key path
     }
 
     stages {
         stage('SCM Checkout') {
             steps {
-                retry(3) {
-                    git branch: 'main', url: 'https://github.com/GiharaNavindu/talks-dev.git'
+                script {
+                    echo "🔹 Cloning repository..."
+                    retry(3) {
+                        git branch: 'main', url: 'https://github.com/GiharaNavindu/talks-dev.git'
+                    }
+                    echo "✅ Repository cloned successfully."
+                }
+            }
+        }
+
+        stage('Verify Terraform Config') {
+            steps {
+                script {
+                    def terraformConfigExists = bat(script: 'if exist main.tf echo "FOUND"', returnStdout: true).trim()
+                    if (terraformConfigExists != "FOUND") {
+                        error "❌ ERROR: Terraform configuration files are missing! Ensure main.tf is present in the workspace."
+                    } else {
+                        echo "✅ Terraform configuration files found."
+                    }
+                }
+            }
+        }
+
+        stage('Initialize and Apply Terraform') {
+            steps {
+                script {
+                    echo "🔹 Initializing Terraform..."
+                    bat "${TERRAFORM_PATH} init"
+                    
+                    echo "🔹 Applying Terraform configuration..."
+                    bat "${TERRAFORM_PATH} apply -auto-approve"
+
+                    script {
+                        echo "🔹 Fetching EC2 public IP..."
+                        env.EC2_PUBLIC_IP = bat(script: "${TERRAFORM_PATH} output -raw instance_ip", returnStdout: true).trim()
+                        if (!env.EC2_PUBLIC_IP) {
+                            error "❌ ERROR: Failed to fetch EC2 public IP. Check Terraform outputs."
+                        }
+                        echo "✅ Provisioned EC2 Instance IP: ${env.EC2_PUBLIC_IP}"
+                    }
                 }
             }
         }
@@ -25,29 +63,24 @@ pipeline {
         stage('Build and Push Docker Images') {
             steps {
                 script {
+                    echo "🔹 Building Docker images..."
                     bat "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} ./client"
                     bat "docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
-                }
+                    echo "✅ Docker images built successfully."
 
-                script {
+                    echo "🔹 Logging into Docker Hub..."
                     withCredentials([string(credentialsId: 'Dockerpwd', variable: 'DOCKER_PASSWORD')]) {
-                        bat "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
+                        def loginResult = bat(script: "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}", returnStatus: true)
+                        if (loginResult != 0) {
+                            error "❌ ERROR: Docker login failed!"
+                        }
                     }
+                    echo "✅ Successfully logged into Docker Hub."
+
+                    echo "🔹 Pushing images to Docker Hub..."
                     bat "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
                     bat "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
-                }
-            }
-        }
-
-        stage('Provision EC2 Instance') {
-            steps {
-                dir('terraform') {
-                    bat "${TERRAFORM_PATH} init"
-                    bat "${TERRAFORM_PATH} apply -auto-approve"
-                    script {
-                        env.EC2_PUBLIC_IP = bat(script: "${TERRAFORM_PATH} output -raw instance_ip", returnStdout: true).trim()
-                        echo "Provisioned EC2 Instance IP: ${env.EC2_PUBLIC_IP}"
-                    }
+                    echo "✅ Docker images pushed successfully."
                 }
             }
         }
@@ -55,21 +88,50 @@ pipeline {
         stage('Deploy on EC2') {
             steps {
                 script {
-                    echo "Deploying backend and frontend on EC2..."
-
-                    bat """
-                        echo "Installing Docker on EC2..."
+                    echo "🔹 Installing Docker on EC2..."
+                    def dockerInstall = bat(script: """
                         ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "sudo apt update && sudo apt install -y docker.io"
-                        
-                        echo "Pulling images..."
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker pull ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker pull ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
-                        
-                        echo "Starting containers..."
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker network create ${NETWORK_NAME} || true"
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker run -d --name backend-container --network ${NETWORK_NAME} -p ${BACKEND_PORT}:${BACKEND_PORT} ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker run -d --name frontend-container --network ${NETWORK_NAME} -p 80:5173 ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
-                    """
+                    """, returnStatus: true)
+                    if (dockerInstall != 0) {
+                        error "❌ ERROR: Failed to install Docker on EC2."
+                    }
+                    echo "✅ Docker installed successfully on EC2."
+
+                    echo "🔹 Pulling Docker images on EC2..."
+                    def pullBackend = bat(script: "ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} 'docker pull ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}'", returnStatus: true)
+                    def pullFrontend = bat(script: "ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} 'docker pull ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}'", returnStatus: true)
+                    if (pullBackend != 0 || pullFrontend != 0) {
+                        error "❌ ERROR: Failed to pull Docker images on EC2."
+                    }
+                    echo "✅ Docker images pulled successfully on EC2."
+
+                    echo "🔹 Setting up Docker network..."
+                    bat "ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} 'docker network create ${NETWORK_NAME} || true'"
+                    echo "✅ Docker network setup completed."
+
+                    echo "🔹 Running backend container on EC2..."
+                    def runBackend = bat(script: """
+                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "
+                            docker run -d --name backend-container --network ${NETWORK_NAME} \
+                            -p ${BACKEND_PORT}:${BACKEND_PORT} ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
+                    """, returnStatus: true)
+                    if (runBackend != 0) {
+                        error "❌ ERROR: Failed to start backend container on EC2."
+                    }
+                    echo "✅ Backend container is running on EC2."
+
+                    echo "🔹 Running frontend container on EC2..."
+                    def runFrontend = bat(script: """
+                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "
+                            docker run -d --name frontend-container --network ${NETWORK_NAME} \
+                            -p 80:5173 ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
+                    """, returnStatus: true)
+                    if (runFrontend != 0) {
+                        error "❌ ERROR: Failed to start frontend container on EC2."
+                    }
+                    echo "✅ Frontend container is running on EC2."
+
+                    echo "🚀 Deployment completed successfully! Access frontend at http://${env.EC2_PUBLIC_IP}"
                 }
             }
         }
@@ -77,8 +139,9 @@ pipeline {
 
     post {
         always {
+            echo "🔹 Logging out from Docker Hub..."
             bat 'docker logout'
-            echo "Logged out from Docker Hub."
+            echo "✅ Logged out from Docker Hub."
         }
     }
 }
