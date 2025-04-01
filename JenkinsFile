@@ -47,7 +47,7 @@ pipeline {
 
                 dir('terraform') {  // Ensure Terraform runs in the correct directory
                     // Use AWS credentials
-                    withCredentials([
+                    withCredentials([ 
                         string(credentialsId: 'aws-access-key', variable: 'AWS_ACCESS_KEY_ID'),
                         string(credentialsId: 'aws-secret-key', variable: 'AWS_SECRET_ACCESS_KEY')
                     ]) {
@@ -73,7 +73,7 @@ pipeline {
 
                     bat """
                         echo "Installing Docker on EC2..."
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "sudo apt update && sudo apt install -y docker.io"
+                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "powershell -Command 'Install-Package -Name docker-desktop -Force -Scope CurrentUser'"
                         
                         echo "Pulling images..."
                         ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker pull ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
