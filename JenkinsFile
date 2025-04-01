@@ -104,7 +104,7 @@ pipeline {
             steps {
                 script {
                     echo "Checking Terraform availability..."
-                    def terraformPath = 'C:\\terraform_1.11.3_windows_386\\terraform.exe'
+                    def terraformPath = 'C:\terraform_1.11.3_windows_386\terraform.exe'
                     def terraformCheck = bat(script: "where terraform", returnStatus: true)
                     if (terraformCheck != 0) {
                         error "Terraform not found in PATH. Using manual path: ${terraformPath}"
@@ -113,19 +113,14 @@ pipeline {
                 
                 dir('terraform') {
                     echo "Initializing Terraform..."
-                    bat "${terraformPath} init"
+                    bat 'C:\terraform_1.11.3_windows_386\terraform.exe init'
                     
                     echo "Applying Terraform configuration..."
-                    bat "${terraformPath} apply -auto-approve"
+                    bat 'C:\terraform_1.11.3_windows_386\terraform.exe apply -auto-approve'
                     
                     script {
                         echo "Fetching EC2 public IP..."
-                        // Use a temporary file to capture the output
-                        bat """
-                            @echo off
-                            ${terraformPath} output -raw instance_ip > temp_ip.txt
-                        """
-                        def ec2PublicIp = readFile('temp_ip.txt').trim()
+                        def ec2PublicIp = bat(script: 'C:\terraform_1.11.3_windows_386\terraform.exe output -raw instance_ip', returnStdout: true).trim()
                         env.EC2_PUBLIC_IP = ec2PublicIp
                         echo "Provisioned EC2 Instance IP: ${env.EC2_PUBLIC_IP}"
                     }
@@ -133,84 +128,86 @@ pipeline {
             }
         }
 
+
         stage('Deploy to EC2') {
-            steps {
-                script {
-                    writeFile file: 'ansible/hosts', text: """
-                    [chat_servers]
-                    ${env.EC2_PUBLIC_IP} ansible_user=ec2-user ansible_ssh_private_key_file=C:/Users/MSI12/.ssh/chat-app-key.pem
-                    """
+    steps {
+        // Dynamically update Ansible inventory with the EC2 public IP
+        writeFile file: 'ansible/hosts', text: """
+        [chat_servers]
+        ${EC2_PUBLIC_IP} ansible_user=ec2-user ansible_ssh_private_key_file=C:/Users/MSI12/.ssh/chat-app-key.pem
+        """
 
-                    writeFile file: 'docker-compose.yml', text: """
-                    services:
-                      api:
-                        image: ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}
-                        container_name: eloquent_lalande
-                        ports:
-                          - "4040:4040"
-                        env_file:
-                          - ./api/.env
-                        depends_on:
-                          - mongo
-                        restart: unless-stopped
-                        networks:
-                          - app-network
+        // Generate docker-compose.yml with the correct image tags
+        writeFile file: 'docker-compose.yml', text: """
+        services:
+          api:
+            image: ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}
+            container_name: eloquent_lalande
+            ports:
+              - "4040:4040"
+            env_file:
+              - ./api/.env
+            depends_on:
+              - mongo
+            restart: unless-stopped
+            networks:
+              - app-network
 
-                      client:
-                        image: ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}
-                        container_name: sharp_diffie
-                        depends_on:
-                          - api
-                        ports:
-                          - "5173:5173"
-                        environment:
-                          - VITE_API_URL=http://localhost:5173
-                        restart: unless-stopped
-                        networks:
-                          - app-network
+          client:
+            image: ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}
+            container_name: sharp_diffie
+            depends_on:
+              - api
+            ports:
+              - "5173:5173"
+            environment:
+              - VITE_API_URL=http://localhost:5173
+            restart: unless-stopped
+            networks:
+              - app-network
 
-                      mongo:
-                        image: mongo:6.0
-                        container_name: mongo-service
-                        ports:
-                          - "27017:27017"
-                        volumes:
-                          - mongo-data:/data/db
-                        restart: unless-stopped
-                        networks:
-                          - app-network
+          mongo:
+            image: mongo:6.0
+            container_name: mongo-service
+            ports:
+              - "27017:27017"
+            volumes:
+              - mongo-data:/data/db
+            restart: unless-stopped
+            networks:
+              - app-network
 
-                      nginx:
-                        image: nginx:latest
-                        container_name: nginx-reverse-proxy
-                        ports:
-                          - "80:80"
-                        volumes:
-                          - ./nginx.conf:/etc/nginx/nginx.conf
-                        depends_on:
-                          - api
-                        restart: unless-stopped
-                        networks:
-                          - app-network
+          nginx:
+            image: nginx:latest
+            container_name: nginx-reverse-proxy
+            ports:
+              - "80:80"
+            volumes:
+              - ./nginx.conf:/etc/nginx/nginx.conf
+            depends_on:
+              - api
+            restart: unless-stopped
+            networks:
+              - app-network
 
-                    volumes:
-                      mongo-data:
+        volumes:
+          mongo-data:
 
-                    networks:
-                      app-network:
-                        driver: bridge
-                    """
+        networks:
+          app-network:
+            driver: bridge
+        """
 
-                    // Ensure the MongoDB image is available
-                    bat 'docker pull mongo:6.0'
+        // Ensure the MongoDB image is available
+        bat 'docker pull mongo:6.0'
 
-                    // Run Ansible playbook (using WSL)
-                    dir('ansible') {
-                        bat "wsl ansible-playbook -i hosts deploy.yml --extra-vars \"docker_image_backend=${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} docker_image_frontend=${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}\""
-                    }
-                }
-            }
+        // Run Ansible playbook (using WSL)
+        dir('ansible') {
+            bat "wsl ansible-playbook -i hosts deploy.yml --extra-vars \"docker_image_backend=${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} docker_image_frontend=${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}\""
         }
+    }
+}
+
     }
 
     post {
