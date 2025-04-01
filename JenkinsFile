@@ -46,12 +46,21 @@ pipeline {
                 }
 
                 dir('terraform') {  // Ensure Terraform runs in the correct directory
-                    bat "${TERRAFORM_PATH} init"
-                    bat "${TERRAFORM_PATH} apply -auto-approve"
+                    // Use AWS credentials
+                    withCredentials([
+                        string(credentialsId: 'aws-access-key', variable: 'AWS_ACCESS_KEY_ID'),
+                        string(credentialsId: 'aws-secret-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                    ]) {
+                        // Initialize Terraform
+                        bat "${TERRAFORM_PATH} init"
+                        // Apply Terraform configuration
+                        bat "${TERRAFORM_PATH} apply -auto-approve"
 
-                    script {
-                        env.EC2_PUBLIC_IP = bat(script: "${TERRAFORM_PATH} output -raw instance_ip", returnStdout: true).trim()
-                        echo "Provisioned EC2 Instance IP: ${env.EC2_PUBLIC_IP}"
+                        // Get the EC2 instance IP
+                        script {
+                            env.EC2_PUBLIC_IP = bat(script: "${TERRAFORM_PATH} output -raw instance_ip", returnStdout: true).trim()
+                            echo "Provisioned EC2 Instance IP: ${env.EC2_PUBLIC_IP}"
+                        }
                     }
                 }
             }
