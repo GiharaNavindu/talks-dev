@@ -43,9 +43,9 @@ pipeline {
                 script {
                     echo "Downloading and configuring Terraform..."
                     bat """
-                        curl -LO https://releases.hashicorp.com/terraform/1.11.3/terraform_1.11.3_windows_386.zip
-                        tar -xf terraform_1.11.3_windows_386.zip
-                        move terraform.exe /usr/local/bin/
+                        powershell -Command "Invoke-WebRequest -Uri https://releases.hashicorp.com/terraform/1.11.3/terraform_1.11.3_windows_386.zip -OutFile terraform.zip"
+                        powershell -Command "Expand-Archive -Path terraform.zip -DestinationPath ."
+                        move terraform.exe C:\\Windows\\System32\\
                     """
                 }
 
