@@ -8,9 +8,8 @@ pipeline {
         BUILD_TAG = "latest"
         NETWORK_NAME = 'app-network'
         BACKEND_PORT = '4040'
-        TERRAFORM_PATH = 'C:\\terraform_1.11.3_windows_386\\terraform.exe'
-        SSH_USER = 'ubuntu'  // Default user for Ubuntu AMIs
-        SSH_KEY = 'chat-app-key.pem' // Update with your key path
+        SSH_USER = 'ubuntu'
+        SSH_KEY = 'chat-app-key.pem'
     }
 
     stages {
@@ -42,23 +41,24 @@ pipeline {
         stage('Provision EC2 Instance') {
             steps {
                 script {
-                    echo "Running Terraform inside the 'terraform' directory..."
+                    echo "Downloading and configuring Terraform..."
+                    bat """
+                        curl -LO https://releases.hashicorp.com/terraform/1.11.3/terraform_1.11.3_windows_386.zip
+                        tar -xf terraform_1.11.3_windows_386.zip
+                        move terraform.exe /usr/local/bin/
+                    """
                 }
 
-                dir('terraform') {  // Ensure Terraform runs in the correct directory
-                    // Use AWS credentials
+                dir('terraform') {
                     withCredentials([ 
                         string(credentialsId: 'aws-access-key', variable: 'AWS_ACCESS_KEY_ID'),
                         string(credentialsId: 'aws-secret-key', variable: 'AWS_SECRET_ACCESS_KEY')
                     ]) {
-                        // Initialize Terraform
-                        bat "${TERRAFORM_PATH} init"
-                        // Apply Terraform configuration
-                        bat "${TERRAFORM_PATH} apply -auto-approve"
+                        bat "terraform init"
+                        bat "terraform apply -auto-approve"
 
-                        // Get the EC2 instance IP
                         script {
-                            env.EC2_PUBLIC_IP = bat(script: "${TERRAFORM_PATH} output -raw instance_ip", returnStdout: true).trim()
+                            env.EC2_PUBLIC_IP = bat(script: "terraform output -raw instance_ip", returnStdout: true).trim()
                             echo "Provisioned EC2 Instance IP: ${env.EC2_PUBLIC_IP}"
                         }
                     }
@@ -70,10 +70,9 @@ pipeline {
             steps {
                 script {
                     echo "Deploying backend and frontend on EC2..."
-
                     bat """
-                        echo "Installing Docker on EC2..."
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "powershell -Command 'Install-Package -Name docker-desktop -Force -Scope CurrentUser'"
+                        echo "Setting up Docker on EC2..."
+                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "sudo apt-get update && sudo apt-get install -y docker.io"
                         
                         echo "Pulling images..."
                         ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker pull ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
