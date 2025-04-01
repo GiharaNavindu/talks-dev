@@ -1,11 +1,6 @@
 pipeline {
     agent any
 
-    tools {
-        // Install via Jenkins Global Tool Configuration (Name: terraform-1.11.3)
-        terraform 'terraform-1.11.3' 
-    }
-
     environment {
         DOCKER_USERNAME = 'devgixa'
         DOCKER_IMAGE_FRONTEND = 'devgixa/frontend-service'
@@ -13,9 +8,9 @@ pipeline {
         BUILD_TAG = "latest"
         NETWORK_NAME = 'app-network'
         BACKEND_PORT = '4040'
-        SSH_USER = 'ubuntu'
-        SSH_KEY = 'chat-app-key.pem'
-        TF_PLUGIN_CACHE_DIR = "${WORKSPACE}\\.terraform-cache" // Caching directory
+        TERRAFORM_PATH = 'C:\\terraform_1.11.3_windows_386\\terraform.exe'
+        SSH_USER = 'ubuntu'  // Default user for Ubuntu AMIs
+        SSH_KEY = 'chat-app-key.pem' // Update with your key path
     }
 
     stages {
@@ -24,51 +19,48 @@ pipeline {
                 retry(3) {
                     git branch: 'main', url: 'https://github.com/GiharaNavindu/talks-dev.git'
                 }
-                // Create Terraform cache directory
-                bat "if not exist \"${TF_PLUGIN_CACHE_DIR}\" mkdir ${TF_PLUGIN_CACHE_DIR}"
             }
         }
 
         stage('Build and Push Docker Images') {
             steps {
                 script {
-                    bat "docker build --no-cache -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} ./client"
-                    bat "docker build --no-cache -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
+                    bat "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} ./client"
+                    bat "docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
                 }
 
                 script {
                     withCredentials([string(credentialsId: 'Dockerpwd', variable: 'DOCKER_PASSWORD')]) {
-                        bat "docker login -u ${DOCKER_USERNAME} -p %DOCKER_PASSWORD%"
+                        bat "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
                     }
-                    timeout(10) {
-                        bat "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
-                        bat "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
-                    }
+                    bat "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
+                    bat "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
                 }
             }
         }
 
         stage('Provision EC2 Instance') {
             steps {
-                dir('terraform') {
-                    script {
-                        // Initialize only if not cached
-                        bat """
-                          set TF_PLUGIN_CACHE_DIR=%TF_PLUGIN_CACHE_DIR%
-                          if not exist .terraform (
-                              terraform init
-                          )
-                        """
-                        
-                        // Apply with auto-approve and refresh state
-                        bat "terraform apply -refresh=true -auto-approve"
-                        
-                        // Get instance IP
-                        env.EC2_PUBLIC_IP = bat(
-                            script: "terraform output -raw instance_ip",
-                            returnStdout: true
-                        ).trim()
-                        echo "Provisioned IP: ${env.EC2_PUBLIC_IP}"
+                script {
+                    echo "Running Terraform inside the 'terraform' directory..."
+                }
+
+                dir('terraform') {  // Ensure Terraform runs in the correct directory
+                    // Use AWS credentials
+                    withCredentials([ 
+                        string(credentialsId: 'aws-access-key', variable: 'AWS_ACCESS_KEY_ID'),
+                        string(credentialsId: 'aws-secret-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                    ]) {
+                        // Initialize Terraform
+                        bat "${TERRAFORM_PATH} init"
+                        // Apply Terraform configuration
+                        bat "${TERRAFORM_PATH} apply -auto-approve"
+
+                        // Get the EC2 instance IP
+                        script {
+                            env.EC2_PUBLIC_IP = bat(script: "${TERRAFORM_PATH} output -raw instance_ip", returnStdout: true).trim()
+                            echo "Provisioned EC2 Instance IP: ${env.EC2_PUBLIC_IP}"
+                        }
                     }
                 }
             }
@@ -77,35 +69,20 @@ pipeline {
         stage('Deploy on EC2') {
             steps {
                 script {
+                    echo "Deploying backend and frontend on EC2..."
+
                     bat """
-                        echo Installing Docker on EC2 instance...
-                        ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ${SSH_USER}@${env.EC2_PUBLIC_IP} << EOF
-                        sudo apt-get update
-                        sudo apt-get install -y docker.io
-                        sudo systemctl start docker
-                        sudo usermod -aG docker ubuntu
-                        exit
-                        EOF
-
-                        echo Pulling images...
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "
-                            docker pull ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}
-                            docker pull ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}
-                        "
-
-                        echo Starting containers...
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "
-                            docker network create ${NETWORK_NAME} || true
-                            docker run -d --rm --name backend \\
-                                --network ${NETWORK_NAME} \\
-                                -p ${BACKEND_PORT}:${BACKEND_PORT} \\
-                                ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}
-                            
-                            docker run -d --rm --name frontend \\
-                                --network ${NETWORK_NAME} \\
-                                -p 80:5173 \\
-                                ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}
-                        "
+                        echo "Installing Docker on EC2..."
+                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "powershell -Command 'Install-Package -Name docker-desktop -Force -Scope CurrentUser'"
+                        
+                        echo "Pulling images..."
+                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker pull ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
+                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker pull ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
+                        
+                        echo "Starting containers..."
+                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker network create ${NETWORK_NAME} || true"
+                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker run -d --name backend-container --network ${NETWORK_NAME} -p ${BACKEND_PORT}:${BACKEND_PORT} ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
+                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker run -d --name frontend-container --network ${NETWORK_NAME} -p 80:5173 ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
                     """
                 }
             }
@@ -115,14 +92,7 @@ pipeline {
     post {
         always {
             bat 'docker logout'
-            // Cleanup Docker cache
-            bat 'docker system prune -f'
-            echo "Pipeline completed with status: ${currentBuild.currentResult}"
-        }
-        failure {
-            emailext body: 'Pipeline failed. Check ${BUILD_URL}',
-                    subject: 'Pipeline Failed: ${JOB_NAME}',
-                    to: 'your-team@example.com'
+            echo "Logged out from Docker Hub."
         }
     }
 }
