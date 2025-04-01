@@ -11,6 +11,7 @@ pipeline {
         TERRAFORM_PATH = 'C:\\terraform_1.11.3_windows_386\\terraform.exe'
         SSH_USER = 'ubuntu'  // Default user for Ubuntu AMIs
         SSH_KEY = 'chat-app-key.pem' // Update with your key path
+        TF_PLUGIN_CACHE_DIR = 'C:\\terraform_cache' // Use a local directory to cache providers
     }
 
     stages {
@@ -45,14 +46,24 @@ pipeline {
                     echo "Running Terraform inside the 'terraform' directory..."
                 }
 
-                dir('terraform') {  // Ensure Terraform runs in the correct directory
+                dir('terraform') {
                     withCredentials([ 
                         string(credentialsId: 'aws-access-key', variable: 'AWS_ACCESS_KEY_ID'),
                         string(credentialsId: 'aws-secret-key', variable: 'AWS_SECRET_ACCESS_KEY')
                     ]) {
-                        // Faster Terraform init using the lock file
-                        bat "${TERRAFORM_PATH} init -lockfile=readonly"
-
+                        script {
+                            // Check if .terraform.lock.hcl exists
+                            def lockFileExists = fileExists('.terraform.lock.hcl')
+                            if (!lockFileExists) {
+                                // If the lock file does not exist, initialize Terraform and download the providers
+                                echo "Lock file does not exist, downloading providers..."
+                                bat "${TERRAFORM_PATH} init"
+                            } else {
+                                // If the lock file exists, use the cached providers
+                                echo "Using cached providers from .terraform.lock.hcl..."
+                                bat "${TERRAFORM_PATH} init -lockfile=readonly"
+                            }
+                        }
                         // Apply Terraform configuration
                         bat "${TERRAFORM_PATH} apply -auto-approve"
 
