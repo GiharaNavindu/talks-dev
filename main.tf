@@ -8,7 +8,7 @@ resource "aws_instance" "my_ec2" {
   key_name      = "chat-app-key"  # Change to your key pair name
 
   tags = {
-    Name = "Terraform-EC2"
+    Name = "chat-app"
   }
 }
 
