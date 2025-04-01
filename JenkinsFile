@@ -8,6 +8,9 @@ pipeline {
         BUILD_TAG = "latest"
         NETWORK_NAME = 'app-network'
         BACKEND_PORT = '4040'
+        TERRAFORM_PATH = 'C:\\terraform_1.11.3_windows_386\\terraform.exe'
+        SSH_USER = 'ubuntu'  // Default user for Ubuntu AMIs
+        SSH_KEY = 'chat-app-key.pem' // Update with your key path
     }
 
     stages {
@@ -19,195 +22,57 @@ pipeline {
             }
         }
 
-        stage('Build Frontend Image') {
+        stage('Build and Push Docker Images') {
             steps {
                 script {
                     bat "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} ./client"
-                }
-            }
-        }
-
-        stage('Build Backend Image') {
-            steps {
-                script {
                     bat "docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
                 }
-            }
-        }
 
-        stage('Check Network') {
-            steps {
-                script {
-                    echo "Checking if the app-network exists..."
-                    def networkExists = bat(script: "docker network ls | findstr ${NETWORK_NAME}", returnStatus: true)
-                    if (networkExists != 0) {
-                        echo "Network ${NETWORK_NAME} does not exist, creating it..."
-                        bat "docker network create ${NETWORK_NAME}"
-                    } else {
-                        echo "Network ${NETWORK_NAME} already exists."
-                    }
-                }
-            }
-        }
-
-        stage('Run Locally for Testing') {
-            steps {
-                script {
-                    echo "Running containers locally..."
-                    withCredentials([
-                        string(credentialsId: 'MONGO_URL', variable: 'MONGO_URL'),
-                        string(credentialsId: 'JWT_SECRET', variable: 'JWT_SECRET'),
-                        string(credentialsId: 'CLIENT_URL', variable: 'CLIENT_URL')
-                    ]) {
-                        bat """
-                            docker run -d --name backend-container --network ${NETWORK_NAME} \
-                                --env MONGO_URL=${MONGO_URL} \
-                                --env JWT_SECRET=${JWT_SECRET} \
-                                --env CLIENT_URL=${CLIENT_URL} \
-                                -p ${BACKEND_PORT}:${BACKEND_PORT} ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}
-                        """
-                    }
-                    bat """
-                        docker run -d --name frontend-container --network ${NETWORK_NAME} \
-                            -p 5173:5173 ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}
-                    """
-                    echo "Containers are running. Use 'docker ps' to check the status."
-                }
-            }
-        }
-
-        stage('Login to Docker Hub') {
-            steps {
                 script {
                     withCredentials([string(credentialsId: 'Dockerpwd', variable: 'DOCKER_PASSWORD')]) {
-                        def loginResult = bat(script: "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}", returnStatus: true)
-                        if (loginResult != 0) {
-                            error "Docker login failed!"
-                        } else {
-                            echo "Successfully logged in to Docker Hub."
-                        }
+                        bat "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
                     }
-                }
-            }
-        }
-
-        stage('Push Images to Docker Hub') {
-            steps {
-                script {
                     bat "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
                     bat "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
                 }
             }
         }
 
-        stage('Provision Infrastructure') {
+        stage('Provision EC2 Instance') {
             steps {
-                script {
-                    echo "Checking Terraform availability..."
-                    def terraformPath = 'C:\terraform_1.11.3_windows_386\terraform.exe'
-                    def terraformCheck = bat(script: "where terraform", returnStatus: true)
-                    if (terraformCheck != 0) {
-                        error "Terraform not found in PATH. Using manual path: ${terraformPath}"
-                    }
-                }
-                
                 dir('terraform') {
-                    echo "Initializing Terraform..."
-                    bat 'C:\terraform_1.11.3_windows_386\terraform.exe init'
-                    
-                    echo "Applying Terraform configuration..."
-                    bat 'C:\terraform_1.11.3_windows_386\terraform.exe apply -auto-approve'
-                    
+                    bat "${TERRAFORM_PATH} init"
+                    bat "${TERRAFORM_PATH} apply -auto-approve"
                     script {
-                        echo "Fetching EC2 public IP..."
-                        def ec2PublicIp = bat(script: 'C:\terraform_1.11.3_windows_386\terraform.exe output -raw instance_ip', returnStdout: true).trim()
-                        env.EC2_PUBLIC_IP = ec2PublicIp
+                        env.EC2_PUBLIC_IP = bat(script: "${TERRAFORM_PATH} output -raw instance_ip", returnStdout: true).trim()
                         echo "Provisioned EC2 Instance IP: ${env.EC2_PUBLIC_IP}"
                     }
                 }
             }
         }
 
+        stage('Deploy on EC2') {
+            steps {
+                script {
+                    echo "Deploying backend and frontend on EC2..."
 
-        stage('Deploy to EC2') {
-    steps {
-        // Dynamically update Ansible inventory with the EC2 public IP
-        writeFile file: 'ansible/hosts', text: """
-        [chat_servers]
-        ${EC2_PUBLIC_IP} ansible_user=ec2-user ansible_ssh_private_key_file=C:/Users/MSI12/.ssh/chat-app-key.pem
-        """
-
-        // Generate docker-compose.yml with the correct image tags
-        writeFile file: 'docker-compose.yml', text: """
-        services:
-          api:
-            image: ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}
-            container_name: eloquent_lalande
-            ports:
-              - "4040:4040"
-            env_file:
-              - ./api/.env
-            depends_on:
-              - mongo
-            restart: unless-stopped
-            networks:
-              - app-network
-
-          client:
-            image: ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}
-            container_name: sharp_diffie
-            depends_on:
-              - api
-            ports:
-              - "5173:5173"
-            environment:
-              - VITE_API_URL=http://localhost:5173
-            restart: unless-stopped
-            networks:
-              - app-network
-
-          mongo:
-            image: mongo:6.0
-            container_name: mongo-service
-            ports:
-              - "27017:27017"
-            volumes:
-              - mongo-data:/data/db
-            restart: unless-stopped
-            networks:
-              - app-network
-
-          nginx:
-            image: nginx:latest
-            container_name: nginx-reverse-proxy
-            ports:
-              - "80:80"
-            volumes:
-              - ./nginx.conf:/etc/nginx/nginx.conf
-            depends_on:
-              - api
-            restart: unless-stopped
-            networks:
-              - app-network
-
-        volumes:
-          mongo-data:
-
-        networks:
-          app-network:
-            driver: bridge
-        """
-
-        // Ensure the MongoDB image is available
-        bat 'docker pull mongo:6.0'
-
-        // Run Ansible playbook (using WSL)
-        dir('ansible') {
-            bat "wsl ansible-playbook -i hosts deploy.yml --extra-vars \"docker_image_backend=${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} docker_image_frontend=${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}\""
+                    bat """
+                        echo "Installing Docker on EC2..."
+                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "sudo apt update && sudo apt install -y docker.io"
+                        
+                        echo "Pulling images..."
+                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker pull ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
+                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker pull ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
+                        
+                        echo "Starting containers..."
+                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker network create ${NETWORK_NAME} || true"
+                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker run -d --name backend-container --network ${NETWORK_NAME} -p ${BACKEND_PORT}:${BACKEND_PORT} ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
+                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker run -d --name frontend-container --network ${NETWORK_NAME} -p 80:5173 ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
+                    """
+                }
+            }
         }
-    }
-}
-
     }
 
     post {
