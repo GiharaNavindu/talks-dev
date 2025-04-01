@@ -116,7 +116,7 @@ pipeline {
                     bat 'C:\\terraform_1.11.3_windows_386\\terraform.exe init'
 
                     echo "Applying Terraform configuration..."
-                    bat 'C:\\terraform_1.11.3_windows_386\\terraform.exe apply -auto-approve'
+                    bat 'C:\\terraform_1.11.3_windows_386\\terraform.exe apply'
 
                     script {
                         echo "Fetching EC2 public IP..."
