@@ -3,7 +3,7 @@ provider "aws" {
 }
 
 resource "aws_instance" "chat_app" {
-  ami           = "ami-0c55b159cbfafe1f0" # Amazon Linux 2 AMI (free tier eligible)
+  ami           = "ami-071226ecf16aa7d96" # Amazon Linux 2 AMI (free tier eligible)
   instance_type = "t2.micro"              # Free tier eligible
   key_name      = "chat-app-key"          # Create this in AWS Console
   security_groups = [aws_security_group.chat_sg.name]
