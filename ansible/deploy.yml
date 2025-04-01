@@ -1,3 +1,36 @@
+# - name: Deploy Chat App to EC2 on Windows
+#   hosts: chat_servers
+#   become: yes
+#   vars:
+#     docker_image_backend: "{{ docker_image_backend }}"
+#     docker_image_frontend: "{{ docker_image_frontend }}"
+#     mongo_data_dir: "C:\\data\\db"
+#   tasks:
+#     - name: Install Docker on Windows
+#       win_chocolatey:
+#         name: docker-desktop
+#         state: present
+
+#     - name: Start Docker service
+#       win_service:
+#         name: Docker
+#         start_mode: auto
+#         state: started
+
+#     - name: Install Docker Compose
+#       win_get_url:
+#         url: "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-Windows-x86_64.exe"
+#         dest: "C:\\Program Files\\Docker\\docker-compose.exe"
+
+#     - name: Copy Docker Compose file
+#       win_copy:
+#         src: ../docker-compose.yml
+#         dest: C:\\Users\\Administrator\\docker-compose.yml
+
+#     - name: Deploy application using Docker Compose
+#       win_shell: |
+#         docker-compose -f C:\\Users\\Administrator\\docker-compose.yml up -d
+
 - name: Deploy Chat App to EC2 on Windows
   hosts: chat_servers
   become: yes
@@ -6,7 +39,13 @@
     docker_image_frontend: "devgixa/frontend-service:latest"
     mongo_data_dir: "C:\\data\\db"
   tasks:
-    - name: Install Docker on Windows
+    - name: Install Chocolatey
+      win_shell: |
+        Set-ExecutionPolicy Bypass -Scope Process -Force;
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072;
+        iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+
+    - name: Install Docker
       win_chocolatey:
         name: docker-desktop
         state: present
