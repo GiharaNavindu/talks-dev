@@ -2,6 +2,8 @@ const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const fs = require('fs');
 const path = require('path');
+require('dotenv').config();
+
 
 let mongoServer;
 
@@ -15,7 +17,6 @@ beforeAll(async () => {
 
   // Mock environment variables
   process.env.MONGO_URL = mongoUri;
-  process.env.JWT_SECRET = 'test-jwt-secret';
   process.env.CLIENT_URL = 'http://localhost:5173';
   
   // Create uploads directory if it doesn't exist

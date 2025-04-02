@@ -223,6 +223,7 @@ mongoose.connect(process.env.MONGO_URL, (err) => {
   if (err) throw err;
   console.log('Connected to the database successfully!'); // Log for database connection
 });
+mongoose.set('strictQuery', true); 
 const jwtSecret = process.env.JWT_SECRET;
 const bcryptSalt = bcrypt.genSaltSync(10);
 
