@@ -8,9 +8,9 @@ pipeline {
         BUILD_TAG = "latest"
         NETWORK_NAME = 'app-network'
         BACKEND_PORT = '4040'
-        SSH_USER = 'Ubuntu'
-        SSH_KEY = "$HOME/.ssh/chat-app-key.pem" // Adjusted for WSL
-        EC2_PUBLIC_IP = '34.229.166.150' // Replace with actual EC2 instance public IP
+        SSH_USER = 'ubuntu' // Ensure correct username (Amazon Linux: ec2-user, Ubuntu: ubuntu)
+        SSH_KEY_PATH = "/var/lib/jenkins/.ssh/chat-app-key.pem"
+        EC2_PUBLIC_IP = '34.229.166.150' // Replace with actual EC2 instance IP
     }
 
     stages {
@@ -22,19 +22,39 @@ pipeline {
             }
         }
 
+        stage('Setup SSH Key') {
+            steps {
+                script {
+                    sh """
+                        mkdir -p /var/lib/jenkins/.ssh
+                        cp /mnt/c/Users/MSI20/.ssh/chat-app-key.pem ${SSH_KEY_PATH}
+                        chmod 600 ${SSH_KEY_PATH}
+                    """
+                }
+            }
+        }
+
         stage('Build and Push Docker Images') {
             steps {
                 script {
-                    sh "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} ./client"
-                    sh "docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
+                    try {
+                        sh "docker build --no-cache -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} ./client"
+                        sh "docker build --no-cache -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
+                    } catch (Exception e) {
+                        error "Docker build failed!"
+                    }
                 }
 
                 script {
                     withCredentials([string(credentialsId: 'Dockerpwd', variable: 'DOCKER_PASSWORD')]) {
                         sh "echo '${DOCKER_PASSWORD}' | docker login -u ${DOCKER_USERNAME} --password-stdin"
                     }
-                    sh "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
-                    sh "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
+                    try {
+                        sh "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
+                        sh "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
+                    } catch (Exception e) {
+                        error "Docker push failed!"
+                    }
                 }
             }
         }
@@ -44,19 +64,13 @@ pipeline {
                 script {
                     echo "Deploying backend and frontend on EC2 using Ansible..."
 
-                    // Ensure SSH key is copied into WSL and has correct permissions
+                    // Ensure Ansible inventory is correctly set up
                     sh """
-                        if [ ! -d /var/lib/jenkins/.ssh ]; then
-                            mkdir -p /var/lib/jenkins/.ssh
-                        fi
-                        if [ ! -f ${SSH_KEY} ]; then
-                            cp /mnt/c/Users/MSI20/.ssh/chat-app-key.pem ${SSH_KEY}
-                            chmod 600 ${SSH_KEY}
-                        fi
+                        echo "${EC2_PUBLIC_IP}" > ansible/inventory.ini
                     """
 
-                    // Run Ansible playbook in WSL
-                    sh "ansible-playbook -i ansible/inventory.ini ansible/deploy.yml --private-key ${SSH_KEY}"
+                    // Run Ansible playbook
+                    sh "ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i ansible/inventory.ini ansible/deploy.yml --private-key ${SSH_KEY_PATH}"
                 }
             }
         }
@@ -66,6 +80,9 @@ pipeline {
         always {
             sh 'docker logout'
             echo "Logged out from Docker Hub."
+        }
+        failure {
+            echo "Pipeline failed! Check the logs for errors."
         }
     }
 }
