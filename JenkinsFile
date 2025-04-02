@@ -10,7 +10,7 @@
 //         BACKEND_PORT = '4040'
 //         SSH_USER = 'ubuntu' // Ensure correct username (Amazon Linux: ec2-user, Ubuntu: ubuntu)
 //         SSH_KEY_PATH = "/var/lib/jenkins/.ssh/chat-app-key.pem"
-//         EC2_PUBLIC_IP = '34.229.166.150' // Replace with actual EC2 instance IP
+//         EC2_PUBLIC_IP = '3.86.206.251' // Replace with actual EC2 instance IP
 //     }
 
 //     stages {
