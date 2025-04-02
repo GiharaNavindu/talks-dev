@@ -8,8 +8,8 @@ pipeline {
         BUILD_TAG = "latest"
         NETWORK_NAME = 'app-network'
         BACKEND_PORT = '4040'
-        SSH_USER = 'ec2-user' // Updated to ec2-user for Amazon Linux 2
-        SSH_KEY = 'chat-app-key.pem'
+        SSH_USER = 'ec2-user' // Updated for Amazon Linux 2
+        SSH_KEY = 'chatting.pem' // Updated to match the key in the command
         EC2_PUBLIC_IP = '3.86.206.251' // Your EC2 instance's public IP
     }
 
@@ -47,13 +47,13 @@ pipeline {
                     // Copy the SSH key to the workspace if it's not already there
                     bat """
                         if not exist ${SSH_KEY} (
-                            copy "C:\\Users\\MSI20\\.ssh\\chatting.pem" ${SSH_KEY}
+                            copy "C:\\path\\to\\chatting.pem" ${SSH_KEY}
                         )
                     """
 
-                    // Run Ansible playbook using a Docker container
+                    // Run Ansible playbook using the cytopia/ansible image
                     bat """
-                        docker run --rm -v %CD%:/ansible -w /ansible ansible/ansible-runner ansible-playbook -i ansible/inventory.ini ansible/deploy.yml --private-key chatting.pem
+                        docker run --rm -v %CD%:/ansible -w /ansible cytopia/ansible ansible-playbook -i ansible/inventory.ini ansible/deploy.yml --private-key chatting.pem
                     """
                 }
             }
