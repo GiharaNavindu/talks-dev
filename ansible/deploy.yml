@@ -31,7 +31,7 @@
 #       win_shell: |
 #         docker-compose -f C:\\Users\\Administrator\\docker-compose.yml up -d
 
-- name: Deploy Chat App to EC2 on Ubuntu
+- name: Deploy Chat App to EC2
   hosts: chat_servers
   become: yes
   vars:
@@ -39,33 +39,11 @@
     docker_image_frontend: "devgixa/frontend-service:latest"
     network_name: "app-network"
     backend_port: "4040"
+
   tasks:
-    - name: Update apt package index
-      apt:
-        update_cache: yes
-
-    - name: Install required packages for Docker
-      apt:
-        name:
-          - apt-transport-https
-          - ca-certificates
-          - curl
-          - software-properties-common
-        state: present
-
-    - name: Add Docker GPG key
-      apt_key:
-        url: https://download.docker.com/linux/ubuntu/gpg
-        state: present
-
-    - name: Add Docker repository
-      apt_repository:
-        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable
-        state: present
-
-    - name: Install Docker
-      apt:
-        name: docker-ce
+    - name: Ensure Docker is installed
+      package:
+        name: docker
         state: present
 
     - name: Start and enable Docker service
@@ -74,18 +52,15 @@
         state: started
         enabled: yes
 
-    - name: Install Docker Compose
-      get_url:
-        url: "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-Linux-x86_64"
-        dest: /usr/local/bin/docker-compose
-        mode: '0755'
+    - name: Remove existing backend container (if running)
+      shell: docker rm -f backend-container || true
+      ignore_errors: yes
 
-    - name: Ensure Docker Compose is executable
-      file:
-        path: /usr/local/bin/docker-compose
-        mode: '0755'
+    - name: Remove existing frontend container (if running)
+      shell: docker rm -f frontend-container || true
+      ignore_errors: yes
 
-    - name: Force pull latest Docker images
+    - name: Pull the latest Docker images
       shell: |
         docker pull {{ docker_image_backend }}
         docker pull {{ docker_image_frontend }}
@@ -105,19 +80,6 @@
           - name: "{{ network_name }}"
         ports:
           - "{{ backend_port }}:{{ backend_port }}"
-      register: backend_status
-      ignore_errors: yes
-
-    - name: Debug backend container logs if it fails
-      command: docker logs backend-container
-      when: backend_status.failed
-      register: backend_logs
-      ignore_errors: yes
-
-    - name: Show backend logs if it failed
-      debug:
-        msg: "{{ backend_logs.stdout }}"
-      when: backend_status.failed
 
     - name: Run frontend container
       docker_container:
@@ -129,7 +91,3 @@
           - name: "{{ network_name }}"
         ports:
           - "80:5173"
-
-    - name: Ensure port 4040 is open in firewall
-      shell: sudo ufw allow 4040
-      ignore_errors: yes
