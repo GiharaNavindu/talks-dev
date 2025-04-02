@@ -31,41 +31,91 @@
 #       win_shell: |
 #         docker-compose -f C:\\Users\\Administrator\\docker-compose.yml up -d
 
-- name: Deploy Chat App to EC2 on Windows
+- name: Deploy Chat App to EC2 on Ubuntu
   hosts: chat_servers
   become: yes
   vars:
     docker_image_backend: "devgixa/backend-service:latest"
     docker_image_frontend: "devgixa/frontend-service:latest"
-    mongo_data_dir: "C:\\data\\db"
+    network_name: "app-network"
+    backend_port: "4040"
   tasks:
-    - name: Install Chocolatey
-      win_shell: |
-        Set-ExecutionPolicy Bypass -Scope Process -Force;
-        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072;
-        iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+    - name: Update apt package index
+      apt:
+        update_cache: yes
 
-    - name: Install Docker
-      win_chocolatey:
-        name: docker-desktop
+    - name: Install required packages for Docker
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
         state: present
 
-    - name: Start Docker service
-      win_service:
-        name: Docker
-        start_mode: auto
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker repository
+      apt_repository:
+        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable
+        state: present
+
+    - name: Install Docker
+      apt:
+        name: docker-ce
+        state: present
+
+    - name: Start and enable Docker service
+      systemd:
+        name: docker
         state: started
+        enabled: yes
 
     - name: Install Docker Compose
-      win_get_url:
-        url: "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-Windows-x86_64.exe"
-        dest: "C:\\Program Files\\Docker\\docker-compose.exe"
+      get_url:
+        url: "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-Linux-x86_64"
+        dest: /usr/local/bin/docker-compose
+        mode: '0755'
 
-    - name: Copy Docker Compose file
-      win_copy:
-        src: ../docker-compose.yml
-        dest: C:\\Users\\Administrator\\docker-compose.yml
+    - name: Ensure Docker Compose is executable
+      file:
+        path: /usr/local/bin/docker-compose
+        mode: '0755'
 
-    - name: Deploy application using Docker Compose
-      win_shell: |
-        docker-compose -f C:\\Users\\Administrator\\docker-compose.yml up -d
+    - name: Pull Docker images
+      docker_image:
+        name: "{{ item }}"
+        source: pull
+      loop:
+        - "{{ docker_image_backend }}"
+        - "{{ docker_image_frontend }}"
+
+    - name: Create Docker network
+      docker_network:
+        name: "{{ network_name }}"
+        state: present
+
+    - name: Run backend container
+      docker_container:
+        name: backend-container
+        image: "{{ docker_image_backend }}"
+        state: started
+        restart_policy: always
+        networks:
+          - name: "{{ network_name }}"
+        ports:
+          - "{{ backend_port }}:{{ backend_port }}"
+
+    - name: Run frontend container
+      docker_container:
+        name: frontend-container
+        image: "{{ docker_image_frontend }}"
+        state: started
+        restart_policy: always
+        networks:
+          - name: "{{ network_name }}"
+        ports:
+          - "80:5173"
