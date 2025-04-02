@@ -9,8 +9,8 @@ pipeline {
         NETWORK_NAME = 'app-network'
         BACKEND_PORT = '4040'
         SSH_USER = 'Ubuntu'
-        SSH_KEY = "$HOME/.ssh/chatnew.pem" // Adjusted for WSL
-        EC2_PUBLIC_IP = '3.86.206.251' // Replace with actual EC2 instance public IP
+        SSH_KEY = "$HOME/.ssh/chat-app-key.pem" // Adjusted for WSL
+        EC2_PUBLIC_IP = '34.229.166.150' // Replace with actual EC2 instance public IP
     }
 
     stages {
@@ -50,7 +50,7 @@ pipeline {
                             mkdir -p /var/lib/jenkins/.ssh
                         fi
                         if [ ! -f ${SSH_KEY} ]; then
-                            cp /mnt/c/Users/MSI20/.ssh/chatnew.pem ${SSH_KEY}
+                            cp /mnt/c/Users/MSI20/.ssh/chat-app-key.pem ${SSH_KEY}
                             chmod 600 ${SSH_KEY}
                         fi
                     """
