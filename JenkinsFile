@@ -8,9 +8,9 @@ pipeline {
         BUILD_TAG = "latest"
         NETWORK_NAME = 'app-network'
         BACKEND_PORT = '4040'
-        TERRAFORM_PATH = 'C:\\terraform_1.11.3_windows_386\\terraform.exe'
-        SSH_USER = 'ubuntu'  // Default user for Ubuntu AMIs
-        SSH_KEY = 'chat-app-key.pem' // Update with your key path
+        SSH_USER = 'Ubuntu'
+        SSH_KEY = 'chat-app-key.pem'
+        EC2_PUBLIC_IP = '<EC2_PUBLIC_IP>' // Replace with your EC2 instance's public IP
     }
 
     stages {
@@ -39,50 +39,21 @@ pipeline {
             }
         }
 
-        stage('Provision EC2 Instance') {
+        stage('Deploy on EC2 with Ansible') {
             steps {
                 script {
-                    echo "Running Terraform inside the 'terraform' directory..."
-                }
+                    echo "Deploying backend and frontend on EC2 using Ansible..."
 
-                dir('terraform') {  // Ensure Terraform runs in the correct directory
-                    // Use AWS credentials
-                    withCredentials([ 
-                        string(credentialsId: 'aws-access-key', variable: 'AWS_ACCESS_KEY_ID'),
-                        string(credentialsId: 'aws-secret-key', variable: 'AWS_SECRET_ACCESS_KEY')
-                    ]) {
-                        // Initialize Terraform
-                        bat "${TERRAFORM_PATH} init"
-                        // Apply Terraform configuration
-                        bat "${TERRAFORM_PATH} apply -auto-approve"
-
-                        // Get the EC2 instance IP
-                        script {
-                            env.EC2_PUBLIC_IP = bat(script: "${TERRAFORM_PATH} output -raw instance_ip", returnStdout: true).trim()
-                            echo "Provisioned EC2 Instance IP: ${env.EC2_PUBLIC_IP}"
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Deploy on EC2') {
-            steps {
-                script {
-                    echo "Deploying backend and frontend on EC2..."
-
+                    // Copy the SSH key to the workspace if it's not already there
                     bat """
-                        echo "Installing Docker on EC2..."
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "powershell -Command 'Install-Package -Name docker-desktop -Force -Scope CurrentUser'"
-                        
-                        echo "Pulling images..."
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker pull ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker pull ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
-                        
-                        echo "Starting containers..."
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker network create ${NETWORK_NAME} || true"
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker run -d --name backend-container --network ${NETWORK_NAME} -p ${BACKEND_PORT}:${BACKEND_PORT} ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
-                        ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker run -d --name frontend-container --network ${NETWORK_NAME} -p 80:5173 ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
+                        if not exist ${SSH_KEY} (
+                            copy "C:\\path\\to\\chat-app-key.pem" ${SSH_KEY}
+                        )
+                    """
+
+                    // Run Ansible playbook using WSL
+                    bat """
+                        wsl bash -c "ansible-playbook -i ansible/inventory.ini ansible/deploy.yml --private-key ${SSH_KEY}"
                     """
                 }
             }
