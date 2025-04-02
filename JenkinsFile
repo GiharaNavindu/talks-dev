@@ -50,7 +50,7 @@ pipeline {
                             mkdir -p /var/lib/jenkins/.ssh
                         fi
                         if [ ! -f ${SSH_KEY} ]; then
-                            cp /mnt/c/Users/MSI20/.ssh/ew.pem ${SSH_KEY}
+                            cp /mnt/c/Users/MSI20/.ssh/new.pem ${SSH_KEY}
                             chmod 600 ${SSH_KEY}
                         fi
                     """
