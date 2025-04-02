@@ -10,7 +10,7 @@ pipeline {
         BACKEND_PORT = '4040'
         SSH_USER = 'Ubuntu'
         SSH_KEY = "$HOME/.ssh/chatting.pem" // Adjusted for WSL
-        EC2_PUBLIC_IP = '<EC2_PUBLIC_IP>' // Replace with actual EC2 instance public IP
+        EC2_PUBLIC_IP = '3.86.206.251' // Replace with actual EC2 instance public IP
     }
 
     stages {
