@@ -85,13 +85,10 @@
         path: /usr/local/bin/docker-compose
         mode: '0755'
 
-    - name: Pull Docker images
-      docker_image:
-        name: "{{ item }}"
-        source: pull
-      loop:
-        - "{{ docker_image_backend }}"
-        - "{{ docker_image_frontend }}"
+    - name: Force pull latest Docker images
+      shell: |
+        docker pull {{ docker_image_backend }}
+        docker pull {{ docker_image_frontend }}
 
     - name: Create Docker network
       docker_network:
@@ -108,6 +105,19 @@
           - name: "{{ network_name }}"
         ports:
           - "{{ backend_port }}:{{ backend_port }}"
+      register: backend_status
+      ignore_errors: yes
+
+    - name: Debug backend container logs if it fails
+      command: docker logs backend-container
+      when: backend_status.failed
+      register: backend_logs
+      ignore_errors: yes
+
+    - name: Show backend logs if it failed
+      debug:
+        msg: "{{ backend_logs.stdout }}"
+      when: backend_status.failed
 
     - name: Run frontend container
       docker_container:
@@ -119,3 +129,7 @@
           - name: "{{ network_name }}"
         ports:
           - "80:5173"
+
+    - name: Ensure port 4040 is open in firewall
+      shell: sudo ufw allow 4040
+      ignore_errors: yes
