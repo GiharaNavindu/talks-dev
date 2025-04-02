@@ -8,9 +8,9 @@ pipeline {
         BUILD_TAG = "latest"
         NETWORK_NAME = 'app-network'
         BACKEND_PORT = '4040'
-        SSH_USER = 'ec2-user' // Updated for Amazon Linux 2
-        SSH_KEY = 'chatting.pem' // Updated to match the key in the command
-        EC2_PUBLIC_IP = '3.86.206.251' // Your EC2 instance's public IP
+        SSH_USER = 'Ubuntu'
+        SSH_KEY = "$HOME/.ssh/chatting.pem" // Adjusted for WSL
+        EC2_PUBLIC_IP = '<EC2_PUBLIC_IP>' // Replace with actual EC2 instance public IP
     }
 
     stages {
@@ -25,16 +25,16 @@ pipeline {
         stage('Build and Push Docker Images') {
             steps {
                 script {
-                    bat "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} ./client"
-                    bat "docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
+                    sh "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} ./client"
+                    sh "docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
                 }
 
                 script {
                     withCredentials([string(credentialsId: 'Dockerpwd', variable: 'DOCKER_PASSWORD')]) {
-                        bat "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
+                        sh "echo '${DOCKER_PASSWORD}' | docker login -u ${DOCKER_USERNAME} --password-stdin"
                     }
-                    bat "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
-                    bat "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
+                    sh "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
+                    sh "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
                 }
             }
         }
@@ -44,17 +44,16 @@ pipeline {
                 script {
                     echo "Deploying backend and frontend on EC2 using Ansible..."
 
-                    // Copy the SSH key to the workspace if it's not already there
-                    bat """
-                        if not exist ${SSH_KEY} (
-                            copy "C:\\Users\\MSI20\\.ssh\\chatting.pem" ${SSH_KEY}
-                        )
+                    // Ensure SSH key is copied into WSL and has correct permissions
+                    sh """
+                        if [ ! -f ${SSH_KEY} ]; then
+                            cp /mnt/c/Users/MSI20/.ssh/chatting.pem ${SSH_KEY}
+                            chmod 600 ${SSH_KEY}
+                        fi
                     """
 
-                    // Run Ansible playbook using the cytopia/ansible image
-                    bat """
-                        docker run --rm -v %CD%:/ansible -w /ansible willhallonline/ansible ansible-playbook -i ansible/inventory.ini ansible/deploy.yml --private-key chatting.pem
-                    """
+                    // Run Ansible playbook in WSL
+                    sh "ansible-playbook -i ansible/inventory.ini ansible/deploy.yml --private-key ${SSH_KEY}"
                 }
             }
         }
@@ -62,7 +61,7 @@ pipeline {
 
     post {
         always {
-            bat 'docker logout'
+            sh 'docker logout'
             echo "Logged out from Docker Hub."
         }
     }
