@@ -47,7 +47,7 @@ pipeline {
                     // Copy the SSH key to the workspace if it's not already there
                     bat """
                         if not exist ${SSH_KEY} (
-                            copy "C:\\path\\to\\chat-app-key.pem" ${SSH_KEY}
+                            copy "C:\\Users\\MSI20\\.ssh\\chatting.pem" ${SSH_KEY}
                         )
                     """
 
