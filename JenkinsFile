@@ -53,7 +53,7 @@ pipeline {
 
                     // Run Ansible playbook using the cytopia/ansible image
                     bat """
-                        docker run --rm -v %CD%:/ansible -w /ansible cytopia/ansible ansible-playbook -i ansible/inventory.ini ansible/deploy.yml --private-key chatting.pem
+                        docker run --rm -v %CD%:/ansible -w /ansible willhallonline/ansible ansible-playbook -i ansible/inventory.ini ansible/deploy.yml --private-key chatting.pem
                     """
                 }
             }
