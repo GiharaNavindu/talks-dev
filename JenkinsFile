@@ -46,6 +46,9 @@ pipeline {
 
                     // Ensure SSH key is copied into WSL and has correct permissions
                     sh """
+                        if [ ! -d /var/lib/jenkins/.ssh ]; then
+                            mkdir -p /var/lib/jenkins/.ssh
+                        fi
                         if [ ! -f ${SSH_KEY} ]; then
                             cp /mnt/c/Users/MSI20/.ssh/chatting.pem ${SSH_KEY}
                             chmod 600 ${SSH_KEY}
