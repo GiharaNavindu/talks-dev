@@ -11,7 +11,6 @@ pipeline {
         TERRAFORM_PATH = 'C:\\terraform_1.11.3_windows_386\\terraform.exe'
         SSH_USER = 'ubuntu'  // Default user for Ubuntu AMIs
         SSH_KEY = 'chat-app-key.pem' // Update with your key path
-        TF_PLUGIN_CACHE_DIR = 'C:\\terraform_cache' // Use a local directory to cache providers
     }
 
     stages {
@@ -46,24 +45,14 @@ pipeline {
                     echo "Running Terraform inside the 'terraform' directory..."
                 }
 
-                dir('terraform') {
+                dir('terraform') {  // Ensure Terraform runs in the correct directory
+                    // Use AWS credentials
                     withCredentials([ 
                         string(credentialsId: 'aws-access-key', variable: 'AWS_ACCESS_KEY_ID'),
                         string(credentialsId: 'aws-secret-key', variable: 'AWS_SECRET_ACCESS_KEY')
                     ]) {
-                        script {
-                            // Check if .terraform.lock.hcl exists
-                            def lockFileExists = fileExists('.terraform.lock.hcl')
-                            if (!lockFileExists) {
-                                // If the lock file does not exist, initialize Terraform and download the providers
-                                echo "Lock file does not exist, downloading providers..."
-                                bat "${TERRAFORM_PATH} init"
-                            } else {
-                                // If the lock file exists, use the cached providers
-                                echo "Using cached providers from .terraform.lock.hcl..."
-                                bat "${TERRAFORM_PATH} init -lockfile=readonly"
-                            }
-                        }
+                        // Initialize Terraform
+                        bat "${TERRAFORM_PATH} init"
                         // Apply Terraform configuration
                         bat "${TERRAFORM_PATH} apply -auto-approve"
 
@@ -85,11 +74,11 @@ pipeline {
                     bat """
                         echo "Installing Docker on EC2..."
                         ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "powershell -Command 'Install-Package -Name docker-desktop -Force -Scope CurrentUser'"
-
+                        
                         echo "Pulling images..."
                         ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker pull ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
                         ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker pull ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
-
+                        
                         echo "Starting containers..."
                         ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker network create ${NETWORK_NAME} || true"
                         ssh -i ${SSH_KEY} ${SSH_USER}@${env.EC2_PUBLIC_IP} "docker run -d --name backend-container --network ${NETWORK_NAME} -p ${BACKEND_PORT}:${BACKEND_PORT} ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
