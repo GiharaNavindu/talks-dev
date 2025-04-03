@@ -86,9 +86,7 @@ RUN npm install --production
 # Copy the rest of the application files
 COPY . .
 
-# Accept MongoDB URL from build arguments
-ARG MONGO_URL
-ENV MONGO_URL=${MONGO_URL}
+
 
 # Expose the application port
 EXPOSE 4040
