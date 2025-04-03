@@ -39,7 +39,7 @@
     docker_image_frontend: "devgixa/frontend-service:latest"
     network_name: "app-network"
     backend_port: "4040"
-    ansible_python_interpreter: /usr/bin/python3.9  # Use the new Python version
+    ansible_python_interpreter: /usr/local/bin/python3.9  # Use the new Python version
 
   tasks:
     - name: Install Amazon Linux Extras for Python 3.9
