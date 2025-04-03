@@ -33,7 +33,7 @@
 
 - name: Deploy Chat App to EC2
   hosts: chat_servers
-  become: yes
+  become: yes  # Run as root for initial setup tasks (e.g., package installation)
   vars:
     docker_image_backend: "devgixa/backend-service:latest"
     docker_image_frontend: "devgixa/frontend-service:latest"
@@ -53,9 +53,16 @@
         state: started
         enabled: yes
 
+    - name: Add ec2-user to docker group
+      user:
+        name: ec2-user
+        groups: docker
+        append: yes  # Add to docker group without removing existing groups
+      register: user_mod_result
+
     - name: Install Python docker library for Ansible Docker modules
       pip:
-        name: docker==6.1.3  # Try an older version if 7.1.0 fails
+        name: docker==6.1.3  # Pinned to a stable version
         state: present
         executable: /usr/local/bin/pip3.9
 
@@ -65,25 +72,44 @@
         state: present
         executable: /usr/local/bin/pip3.9
 
+    # Switch to non-root user for Docker tasks after setup
     - name: Remove existing backend container (if running)
-      shell: docker rm -f backend-container || true
-      ignore_errors: yes
+      docker_container:
+        name: backend-container
+        state: absent
+        force_kill: yes
+      become: false  # Run as ec2-user
+      environment:
+        DOCKER_HOST: "unix:///var/run/docker.sock"
 
     - name: Remove existing frontend container (if running)
-      shell: docker rm -f frontend-container || true
-      ignore_errors: yes
+      docker_container:
+        name: frontend-container
+        state: absent
+        force_kill: yes
+      become: false  # Run as ec2-user
+      environment:
+        DOCKER_HOST: "unix:///var/run/docker.sock"
 
     - name: Pull the latest Docker images
-      shell: |
-        docker pull {{ docker_image_backend }}
-        docker pull {{ docker_image_frontend }}
+      docker_image:
+        name: "{{ item }}"
+        source: pull
+        state: present
+      loop:
+        - "{{ docker_image_backend }}"
+        - "{{ docker_image_frontend }}"
+      become: false  # Run as ec2-user
+      environment:
+        DOCKER_HOST: "unix:///var/run/docker.sock"
 
     - name: Create Docker network
       docker_network:
         name: "{{ network_name }}"
         state: present
+      become: false  # Run as ec2-user
       environment:
-        DOCKER_HOST: "unix:///var/run/docker.sock"  # Explicitly set socket
+        DOCKER_HOST: "unix:///var/run/docker.sock"
 
     - name: Run backend container
       docker_container:
@@ -95,8 +121,9 @@
           - name: "{{ network_name }}"
         ports:
           - "{{ backend_port }}:{{ backend_port }}"
+      become: false  # Run as ec2-user
       environment:
-        DOCKER_HOST: "unix:///var/run/docker.sock"  # Explicitly set socket
+        DOCKER_HOST: "unix:///var/run/docker.sock"
 
     - name: Run frontend container
       docker_container:
@@ -108,5 +135,6 @@
           - name: "{{ network_name }}"
         ports:
           - "80:5173"
+      become: false  # Run as ec2-user
       environment:
-        DOCKER_HOST: "unix:///var/run/docker.sock"  # Explicitly set socket
+        DOCKER_HOST: "unix:///var/run/docker.sock"
