@@ -1,3 +1,93 @@
+// pipeline {
+//     agent any
+
+//     environment {
+//         DOCKER_USERNAME = 'devgixa'
+//         DOCKER_IMAGE_FRONTEND = 'devgixa/frontend-service'
+//         DOCKER_IMAGE_BACKEND = 'devgixa/backend-service'
+//         BUILD_TAG = "latest"
+//         NETWORK_NAME = 'app-network'
+//         BACKEND_PORT = '4040'
+//         SSH_USER = 'ubuntu' // Ensure correct username (Amazon Linux: ec2-user, Ubuntu: ubuntu)
+//         SSH_KEY_PATH = "/var/lib/jenkins/.ssh/chat-app-key.pem"
+//         EC2_PUBLIC_IP = '44.204.27.188' // Replace with actual EC2 instance IP
+//     }
+
+//     stages {
+//         stage('SCM Checkout') {
+//             steps {
+//                 retry(3) {
+//                     git branch: 'main', url: 'https://github.com/GiharaNavindu/talks-dev.git'
+//                 }
+//             }
+//         }
+
+//         stage('Setup SSH Key') {
+//             steps {
+//                 script {
+//                     sh """
+//                         mkdir -p /var/lib/jenkins/.ssh
+//                         cp /mnt/c/Users/MSI20/.ssh/chat-app-key.pem ${SSH_KEY_PATH}
+//                         chmod 600 ${SSH_KEY_PATH}
+//                     """
+//                 }
+//             }
+//         }
+
+//         stage('Build and Push Docker Images') {
+//             steps {
+//                 script {
+//                     try {
+//                         sh "docker build --no-cache -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} ./client"
+//                         sh "docker build --no-cache -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
+//                     } catch (Exception e) {
+//                         error "Docker build failed!"
+//                     }
+//                 }
+
+//                 script {
+//                     withCredentials([string(credentialsId: 'Dockerpwd', variable: 'DOCKER_PASSWORD')]) {
+//                         sh "echo '${DOCKER_PASSWORD}' | docker login -u ${DOCKER_USERNAME} --password-stdin"
+//                     }
+//                     try {
+//                         sh "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
+//                         sh "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
+//                     } catch (Exception e) {
+//                         error "Docker push failed!"
+//                     }
+//                 }
+//             }
+//         }
+
+//         stage('Deploy on EC2 with Ansible') {
+//             steps {
+//                 script {
+//                     echo "Deploying backend and frontend on EC2 using Ansible..."
+
+//                     // Ensure Ansible inventory is correctly set up
+//                     sh """
+//                         echo "${EC2_PUBLIC_IP}" > ansible/inventory.ini
+//                     """
+
+//                     // Run Ansible playbook
+//                     sh "ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i ansible/inventory.ini ansible/deploy.yml --private-key ${SSH_KEY_PATH}"
+//                 }
+//             }
+//         }
+//     }
+
+//     post {
+//         always {
+//             sh 'docker logout'
+//             echo "Logged out from Docker Hub."
+//         }
+//         failure {
+//             echo "Pipeline failed! Check the logs for errors."
+//         }
+//     }
+// }
+
+
 pipeline {
     agent any
 
@@ -7,8 +97,11 @@ pipeline {
         DOCKER_IMAGE_BACKEND = 'devgixa/backend-service'
         BUILD_TAG = "latest"
         NETWORK_NAME = 'app-network'
-        BACKEND_PORT = '4040'
-        NODE_VERSION = '18'
+        BACKEND_PORT = "4040"
+        SSH_USER = 'ec2-user'  // Amazon Linux: ec2-user, Ubuntu: ubuntu (ensure correct user)
+        SSH_KEY_PATH = "/var/lib/jenkins/.ssh/chat-app-key.pem"
+        EC2_PUBLIC_IP = "44.204.27.188"  // Replace with actual EC2 instance IP
+        ANSIBLE_PLAYBOOK = "ansible/deploy.yml"
     }
 
     stages {
@@ -20,229 +113,86 @@ pipeline {
             }
         }
 
-        stage('Install Dependencies') {
-            parallel {
-                stage('Frontend Dependencies') {
-                    steps {
-                        dir('client') {
-                            bat 'npm ci || npm install'
-                        }
-                    }
-                }
-                stage('Backend Dependencies') {
-                    steps {
-                        dir('api') {
-                            bat 'npm ci || npm install'
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Run Tests') {
-            parallel {
-                stage('Frontend Tests') {
-                    steps {
-                        dir('client') {
-                            script {
-                                echo "Running frontend tests..."
-                                bat 'npm test -- --watchAll=false'
-                                // If you're using Vitest or other testing framework
-                                // bat 'npm run test:ci'
-                            }
-                        }
-                    }
-                    post {
-                        always {
-                            junit allowEmptyResults: true, testResults: 'client/junit.xml'
-                        }
-                    }
-                }
-                
-                stage('Backend Tests') {
-                    steps {
-                        dir('api') {
-                            script {
-                                echo "Running backend tests..."
-                                withEnv(['NODE_ENV=test']) {
-                                    bat 'npm test'
-                                    // Or specific test script if defined
-                                    // bat 'npm run test:ci'
-                                }
-                            }
-                        }
-                    }
-                    post {
-                        always {
-                            junit allowEmptyResults: true, testResults: 'api/junit.xml'
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Static Code Analysis') {
-            parallel {
-                stage('Frontend Linting') {
-                    steps {
-                        dir('client') {
-                            bat 'npm run lint || echo "Lint script not found, skipping"'
-                        }
-                    }
-                }
-                stage('Backend Linting') {
-                    steps {
-                        dir('api') {
-                            bat 'npm run lint || echo "Lint script not found, skipping"'
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Build Frontend Image') {
+        stage('Setup SSH Key') {
             steps {
                 script {
-                    bat "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} ./client"
-                }
-            }
-        }
-
-        stage('Build Backend Image') {
-            steps {
-                script {
-                    bat "docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
-                }
-            }
-        }
-
-        stage('Check Network') {
-            steps {
-                script {
-                    echo "Checking if the app-network exists..."
-                    def networkExists = bat(script: "docker network ls | findstr ${NETWORK_NAME}", returnStatus: true)
-                    if (networkExists != 0) {
-                        echo "Network ${NETWORK_NAME} does not exist, creating it..."
-                        bat "docker network create ${NETWORK_NAME}"
-                    } else {
-                        echo "Network ${NETWORK_NAME} already exists."
-                    }
-                }
-            }
-        }
-
-        stage('Clean Previous Containers') {
-            steps {
-                script {
-                    bat "docker rm -f backend-container frontend-container || echo 'No containers to remove'"
-                }
-            }
-        }
-
-        stage('Run Locally for Testing') {
-            steps {
-                script {
-                    echo "Running containers locally..."
-                    withCredentials([
-                        string(credentialsId: 'MONGO_URL', variable: 'MONGO_URL'),
-                        string(credentialsId: 'JWT_SECRET', variable: 'JWT_SECRET'),
-                        string(credentialsId: 'CLIENT_URL', variable: 'CLIENT_URL')
-                    ]) {
-                        bat """
-                            docker run -d --name backend-container --network ${NETWORK_NAME} \
-                                --env MONGO_URL=${MONGO_URL} \
-                                --env JWT_SECRET=${JWT_SECRET} \
-                                --env CLIENT_URL=${CLIENT_URL} \
-                                -p ${BACKEND_PORT}:${BACKEND_PORT} ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}
-                        """
-                    }
-                    bat """
-                        docker run -d --name frontend-container --network ${NETWORK_NAME} \
-                            -p 5173:5173 ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}
+                    sh """
+                        mkdir -p /var/lib/jenkins/.ssh
+                        cp /mnt/c/Users/MSI20/.ssh/chat-app-key.pem ${SSH_KEY_PATH}
+                        chmod 600 ${SSH_KEY_PATH}
                     """
-                    echo "Containers are running. Use 'docker ps' to check the status."
                 }
             }
         }
 
-        stage('Integration Tests') {
+        stage('Build and Push Docker Images') {
             steps {
                 script {
-                    echo "Waiting for services to be ready..."
-                    bat "timeout /t 15"
-                    
-                    echo "Running API health check..."
-                    bat "curl -f http://localhost:${BACKEND_PORT}/test || exit 1"
-                    
-                    echo "Running frontend availability check..."
-                    bat "curl -f http://localhost:5173 || exit 1"
-                    
-                    echo "Integration tests passed successfully"
+                    try {
+                        sh "docker build --no-cache -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} ./client"
+                        sh "docker build --no-cache -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
+                    } catch (Exception e) {
+                        error "Docker build failed!"
+                    }
                 }
-            }
-        }
 
-        stage('Login to Docker Hub') {
-            steps {
                 script {
                     withCredentials([string(credentialsId: 'Dockerpwd', variable: 'DOCKER_PASSWORD')]) {
-                        def loginResult = bat(script: "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}", returnStatus: true)
-                        if (loginResult != 0) {
-                            error "Docker login failed!"
-                        } else {
-                            echo "Successfully logged in to Docker Hub."
-                        }
+                        sh "echo '${DOCKER_PASSWORD}' | docker login -u ${DOCKER_USERNAME} --password-stdin"
+                    }
+                    try {
+                        sh "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
+                        sh "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
+                    } catch (Exception e) {
+                        error "Docker push failed!"
                     }
                 }
             }
         }
 
-        stage('Push Images to Docker Hub') {
+        stage('Verify SSH Connection to EC2') {
             steps {
                 script {
-                    bat "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
-                    bat "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
+                    echo "Testing SSH connection to EC2..."
+                    sh """
+                        ssh -o StrictHostKeyChecking=no -i ${SSH_KEY_PATH} ${SSH_USER}@${EC2_PUBLIC_IP} "echo 'SSH Connection Successful'"
+                    """
                 }
             }
         }
 
-        stage('Provision Infrastructure') {
+        stage('Deploy on EC2 with Ansible') {
             steps {
                 script {
-                    echo "Checking Terraform availability..."
-                    def terraformPath = 'C:\\Users\\MSI20\\terraform.exe'
-                    def terraformCheck = bat(script: "where terraform", returnStatus: true)
-                    if (terraformCheck != 0) {
-                        echo "Terraform not found in PATH. Using manual path: ${terraformPath}"
-                    }
-                }
-                
-                dir('terraform') {
-                    echo "Initializing Terraform..."
-                    bat 'C:\\Users\\MSI20\\terraform.exe init'
+                    echo "Deploying backend and frontend on EC2 using Ansible..."
                     
-                    echo "Applying Terraform configuration..."
-                    bat 'C:\\Users\\MSI20\\terraform.exe apply -auto-approve'
-                    
-                    script {
-                        echo "Fetching EC2 public IP..."
-                        def ec2PublicIp = bat(script: 'C:\\Users\\MSI20\\terraform.exe output -raw instance_ip', returnStdout: true).trim()
-                        env.EC2_PUBLIC_IP = ec2PublicIp
-                        echo "Provisioned EC2 Instance IP: ${env.EC2_PUBLIC_IP}"
-                    }
+                    // Ensure Ansible inventory is correctly set up
+                    sh """
+                        echo "[chat_servers]" > ansible/inventory.ini
+                        echo "${EC2_PUBLIC_IP} ansible_user=${SSH_USER} ansible_ssh_private_key_file=${SSH_KEY_PATH}" >> ansible/inventory.ini
+                    """
+
+                    // Run Ansible playbook with logging
+                    sh "ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i ansible/inventory.ini ${ANSIBLE_PLAYBOOK} --private-key ${SSH_KEY_PATH} | tee ansible-deploy.log"
                 }
             }
         }
 
-        stage('Deploy to EC2') {
+        stage('Verify Docker and Containers on EC2') {
             steps {
                 script {
-                    echo "Deploying application to EC2 instance..."
-                    // Example deployment using SSH (you would need to configure SSH credentials)
-                    // sshagent(['ec2-ssh-key']) {
-                    //     sh "ssh -o StrictHostKeyChecking=no ec2-user@${env.EC2_PUBLIC_IP} 'docker-compose pull && docker-compose up -d'"
-                    // }
-                    echo "Placeholder for EC2 deployment - implement actual deployment"
+                    echo "Checking Docker installation and running containers..."
+                    sh """
+                        ssh -i ${SSH_KEY_PATH} ${SSH_USER}@${EC2_PUBLIC_IP} '
+                            if ! command -v docker &> /dev/null; then
+                                echo "❌ Docker is NOT installed on EC2!"; exit 1;
+                            fi
+                            echo "✅ Docker is installed."
+
+                            echo "Checking running containers..."
+                            docker ps -a
+                        '
+                    """
                 }
             }
         }
@@ -250,26 +200,11 @@ pipeline {
 
     post {
         always {
-            script {
-                // Clean up containers
-                bat "docker rm -f backend-container frontend-container || echo 'No containers to remove'"
-                
-                // Logout from Docker Hub
-                bat 'docker logout'
-                echo "Logged out from Docker Hub."
-                
-                // Clean workspace
-                cleanWs(cleanWhenNotBuilt: false,
-                        deleteDirs: true,
-                        disableDeferredWipeout: true,
-                        notFailBuild: true)
-            }
-        }
-        success {
-            echo "Pipeline completed successfully!"
+            sh 'docker logout'
+            echo "Logged out from Docker Hub."
         }
         failure {
-            echo "Pipeline failed! Check the logs for details."
+            echo "❌ Pipeline failed! Check logs for more details."
         }
     }
 }
