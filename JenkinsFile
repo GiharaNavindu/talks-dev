@@ -1,218 +1,91 @@
-// // // pipeline {
-// // //     agent any
+// // pipeline {
+// //     agent any
 
-// // //     environment {
-// // //         DOCKER_USERNAME = 'devgixa'
-// // //         DOCKER_IMAGE_FRONTEND = 'devgixa/frontend-service'
-// // //         DOCKER_IMAGE_BACKEND = 'devgixa/backend-service'
-// // //         BUILD_TAG = "latest"
-// // //         NETWORK_NAME = 'app-network'
-// // //         BACKEND_PORT = '4040'
-// // //         SSH_USER = 'ubuntu' // Ensure correct username (Amazon Linux: ec2-user, Ubuntu: ubuntu)
-// // //         SSH_KEY_PATH = "/var/lib/jenkins/.ssh/chat-app-key.pem"
-// // //         EC2_PUBLIC_IP = '44.204.27.188' // Replace with actual EC2 instance IP
-// // //     }
+// //     environment {
+// //         DOCKER_USERNAME = 'devgixa'
+// //         DOCKER_IMAGE_FRONTEND = 'devgixa/frontend-service'
+// //         DOCKER_IMAGE_BACKEND = 'devgixa/backend-service'
+// //         BUILD_TAG = "latest"
+// //         NETWORK_NAME = 'app-network'
+// //         BACKEND_PORT = '4040'
+// //         SSH_USER = 'ubuntu' // Ensure correct username (Amazon Linux: ec2-user, Ubuntu: ubuntu)
+// //         SSH_KEY_PATH = "/var/lib/jenkins/.ssh/chat-app-key.pem"
+// //         EC2_PUBLIC_IP = '44.204.27.188' // Replace with actual EC2 instance IP
+// //     }
 
-// // //     stages {
-// // //         stage('SCM Checkout') {
-// // //             steps {
-// // //                 retry(3) {
-// // //                     git branch: 'main', url: 'https://github.com/GiharaNavindu/talks-dev.git'
-// // //                 }
-// // //             }
-// // //         }
+// //     stages {
+// //         stage('SCM Checkout') {
+// //             steps {
+// //                 retry(3) {
+// //                     git branch: 'main', url: 'https://github.com/GiharaNavindu/talks-dev.git'
+// //                 }
+// //             }
+// //         }
 
-// // //         stage('Setup SSH Key') {
-// // //             steps {
-// // //                 script {
-// // //                     sh """
-// // //                         mkdir -p /var/lib/jenkins/.ssh
-// // //                         cp /mnt/c/Users/MSI20/.ssh/chat-app-key.pem ${SSH_KEY_PATH}
-// // //                         chmod 600 ${SSH_KEY_PATH}
-// // //                     """
-// // //                 }
-// // //             }
-// // //         }
+// //         stage('Setup SSH Key') {
+// //             steps {
+// //                 script {
+// //                     sh """
+// //                         mkdir -p /var/lib/jenkins/.ssh
+// //                         cp /mnt/c/Users/MSI20/.ssh/chat-app-key.pem ${SSH_KEY_PATH}
+// //                         chmod 600 ${SSH_KEY_PATH}
+// //                     """
+// //                 }
+// //             }
+// //         }
 
-// // //         stage('Build and Push Docker Images') {
-// // //             steps {
-// // //                 script {
-// // //                     try {
-// // //                         sh "docker build --no-cache -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} ./client"
-// // //                         sh "docker build --no-cache -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
-// // //                     } catch (Exception e) {
-// // //                         error "Docker build failed!"
-// // //                     }
-// // //                 }
+// //         stage('Build and Push Docker Images') {
+// //             steps {
+// //                 script {
+// //                     try {
+// //                         sh "docker build --no-cache -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} ./client"
+// //                         sh "docker build --no-cache -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
+// //                     } catch (Exception e) {
+// //                         error "Docker build failed!"
+// //                     }
+// //                 }
 
-// // //                 script {
-// // //                     withCredentials([string(credentialsId: 'Dockerpwd', variable: 'DOCKER_PASSWORD')]) {
-// // //                         sh "echo '${DOCKER_PASSWORD}' | docker login -u ${DOCKER_USERNAME} --password-stdin"
-// // //                     }
-// // //                     try {
-// // //                         sh "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
-// // //                         sh "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
-// // //                     } catch (Exception e) {
-// // //                         error "Docker push failed!"
-// // //                     }
-// // //                 }
-// // //             }
-// // //         }
+// //                 script {
+// //                     withCredentials([string(credentialsId: 'Dockerpwd', variable: 'DOCKER_PASSWORD')]) {
+// //                         sh "echo '${DOCKER_PASSWORD}' | docker login -u ${DOCKER_USERNAME} --password-stdin"
+// //                     }
+// //                     try {
+// //                         sh "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
+// //                         sh "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
+// //                     } catch (Exception e) {
+// //                         error "Docker push failed!"
+// //                     }
+// //                 }
+// //             }
+// //         }
 
-// // //         stage('Deploy on EC2 with Ansible') {
-// // //             steps {
-// // //                 script {
-// // //                     echo "Deploying backend and frontend on EC2 using Ansible..."
+// //         stage('Deploy on EC2 with Ansible') {
+// //             steps {
+// //                 script {
+// //                     echo "Deploying backend and frontend on EC2 using Ansible..."
 
-// // //                     // Ensure Ansible inventory is correctly set up
-// // //                     sh """
-// // //                         echo "${EC2_PUBLIC_IP}" > ansible/inventory.ini
-// // //                     """
+// //                     // Ensure Ansible inventory is correctly set up
+// //                     sh """
+// //                         echo "${EC2_PUBLIC_IP}" > ansible/inventory.ini
+// //                     """
 
-// // //                     // Run Ansible playbook
-// // //                     sh "ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i ansible/inventory.ini ansible/deploy.yml --private-key ${SSH_KEY_PATH}"
-// // //                 }
-// // //             }
-// // //         }
-// // //     }
+// //                     // Run Ansible playbook
+// //                     sh "ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i ansible/inventory.ini ansible/deploy.yml --private-key ${SSH_KEY_PATH}"
+// //                 }
+// //             }
+// //         }
+// //     }
 
-// // //     post {
-// // //         always {
-// // //             sh 'docker logout'
-// // //             echo "Logged out from Docker Hub."
-// // //         }
-// // //         failure {
-// // //             echo "Pipeline failed! Check the logs for errors."
-// // //         }
-// // //     }
-// // // }
-
-
-// pipeline {
-//     agent any
-
-//     environment {
-//         DOCKER_USERNAME = 'devgixa'
-//         DOCKER_IMAGE_FRONTEND = 'devgixa/frontend-service'
-//         DOCKER_IMAGE_BACKEND = 'devgixa/backend-service'
-//         BUILD_TAG = "latest"
-//         NETWORK_NAME = 'app-network'
-//         BACKEND_PORT = "4040"
-//         SSH_USER = 'ec2-user'  // Amazon Linux: ec2-user, Ubuntu: ubuntu (ensure correct user)
-//         SSH_KEY_PATH = "/var/lib/jenkins/.ssh/chat-app-key.pem"
-//         EC2_PUBLIC_IP = "44.204.27.188"  // Replace with actual EC2 instance IP
-//         ANSIBLE_PLAYBOOK = "ansible/deploy.yml"
-//     }
-
-//     stages {
-//         stage('SCM Checkout') {
-//             steps {
-//                 retry(3) {
-//                     git branch: 'main', url: 'https://github.com/GiharaNavindu/talks-dev.git'
-//                 }
-//             }
-//         }
-
-//         stage('Setup SSH Key') {
-//             steps {
-//                 script {
-//                     sh """
-//                         mkdir -p /var/lib/jenkins/.ssh
-//                         cp /mnt/c/Users/MSI20/.ssh/chat-app-key.pem ${SSH_KEY_PATH}
-//                         chmod 600 ${SSH_KEY_PATH}
-//                     """
-//                 }
-//             }
-//         }
-
-//         stage('Build and Push Docker Images') {
-//             steps {
-//                 script {
-//                     try {
-//                         sh "docker build --no-cache -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} ./client"
-//                         sh "docker build --no-cache -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
-//                     } catch (Exception e) {
-//                         error "Docker build failed!"
-//                     }
-//                 }
-
-//                 script {
-//                     withCredentials([string(credentialsId: 'Dockerpwd', variable: 'DOCKER_PASSWORD')]) {
-//                         sh "echo '${DOCKER_PASSWORD}' | docker login -u ${DOCKER_USERNAME} --password-stdin"
-//                     }
-//                     try {
-//                         sh "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
-//                         sh "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
-//                     } catch (Exception e) {
-//                         error "Docker push failed!"
-//                     }
-//                 }
-//             }
-//         }
-
-//         stage('Verify SSH Connection to EC2') {
-//             steps {
-//                 script {
-//                     echo "Testing SSH connection to EC2..."
-//                     sh """
-//                         ssh -o StrictHostKeyChecking=no -i ${SSH_KEY_PATH} ${SSH_USER}@${EC2_PUBLIC_IP} "echo 'SSH Connection Successful'"
-//                     """
-//                 }
-//             }
-//         }
-
-//         stage('Deploy on EC2 with Ansible') {
-//             steps {
-//                 script {
-//                     echo "Deploying backend and frontend on EC2 using Ansible..."
-                    
-//                     // Ensure Ansible inventory is correctly set up
-//                     sh """
-//                         echo "[chat_servers]" > ansible/inventory.ini
-//                         echo "${EC2_PUBLIC_IP} ansible_user=${SSH_USER} ansible_ssh_private_key_file=${SSH_KEY_PATH}" >> ansible/inventory.ini
-//                     """
-
-//                     // Run Ansible playbook with logging
-//                     sh "ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i ansible/inventory.ini ${ANSIBLE_PLAYBOOK} --private-key ${SSH_KEY_PATH} | tee ansible-deploy.log"
-//                 }
-//             }
-//         }
-
-//         stage('Verify Docker and Containers on EC2') {
-//             steps {
-//                 script {
-//                     echo "Checking Docker installation and running containers..."
-//                     sh """
-//                         ssh -i ${SSH_KEY_PATH} ${SSH_USER}@${EC2_PUBLIC_IP} '
-//                             if ! command -v docker &> /dev/null; then
-//                                 echo "❌ Docker is NOT installed on EC2!"; exit 1;
-//                             fi
-//                             echo "✅ Docker is installed."
-
-//                             echo "Checking running containers..."
-//                             docker ps -a
-//                         '
-//                     """
-//                 }
-//             }
-//         }
-//     }
-
-//     post {
-//         always {
-//             sh 'docker logout'
-//             echo "Logged out from Docker Hub."
-//         }
-//         failure {
-//             echo "❌ Pipeline failed! Check logs for more details."
-//         }
-//     }
-// }
-
-
-
-
-
+// //     post {
+// //         always {
+// //             sh 'docker logout'
+// //             echo "Logged out from Docker Hub."
+// //         }
+// //         failure {
+// //             echo "Pipeline failed! Check the logs for errors."
+// //         }
+// //     }
+// // }
 
 
 pipeline {
@@ -255,9 +128,11 @@ pipeline {
         stage('Build and Push Docker Images') {
             steps {
                 script {
-                    withCredentials([string(credentialsId: 'MONGO_URL', variable: 'MONGO_URL')]) {
-                        // Build backend with MongoDB URL
-                        sh "docker build --no-cache --build-arg MONGO_URL='${MONGO_URL}' -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
+                    try {
+                        sh "docker build --no-cache -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG} ./client"
+                        sh "docker build --no-cache -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
+                    } catch (Exception e) {
+                        error "Docker build failed!"
                     }
                 }
 
@@ -333,3 +208,10 @@ pipeline {
         }
     }
 }
+
+
+
+
+
+
+
