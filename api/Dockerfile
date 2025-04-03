@@ -81,7 +81,7 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 
 # Install only production dependencies
-RUN npm install --production
+RUN npm install ---omit=dev
 
 # Copy the rest of the application files
 COPY . .
