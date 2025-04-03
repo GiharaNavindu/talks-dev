@@ -45,6 +45,32 @@
 
 
 
+# # Use official Node.js image
+# FROM node:18-alpine AS base
+
+# # Set working directory
+# WORKDIR /app
+
+# # Copy package files separately
+# COPY package.json package-lock.json* ./
+
+# # Install only production dependencies
+# RUN npm install
+
+# # Copy the rest of the application files
+# COPY . .
+
+# # Accept MongoDB URL from build arguments
+# ARG MONGO_URL
+# ENV MONGO_URL=${MONGO_URL}
+
+# # Expose the application port
+# EXPOSE 3000
+
+# # Start the application
+# CMD ["npm", "start"]
+
+
 # Use official Node.js image
 FROM node:18-alpine AS base
 
