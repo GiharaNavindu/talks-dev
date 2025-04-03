@@ -91,7 +91,7 @@ ARG MONGO_URL
 ENV MONGO_URL=${MONGO_URL}
 
 # Expose the application port
-EXPOSE 3000
+EXPOSE 4040
 
 # Start the application
 CMD ["npm", "start"]
