@@ -222,11 +222,10 @@ pipeline {
         BUILD_TAG = "latest"
         NETWORK_NAME = 'app-network'
         BACKEND_PORT = "4040"
-        SSH_USER = 'ec2-user'  // Amazon Linux: ec2-user, Ubuntu: ubuntu (ensure correct user)
+        SSH_USER = 'ec2-user'  // Amazon Linux: ec2-user, Ubuntu: ubuntu
         SSH_KEY_PATH = "/var/lib/jenkins/.ssh/chat-app-key.pem"
-        EC2_PUBLIC_IP = "44.204.27.188"  // Replace with actual EC2 instance IP
+        EC2_PUBLIC_IP = "44.204.27.188"
         ANSIBLE_PLAYBOOK = "ansible/deploy.yml"
-        MONGO_URL = mongodb+srv://raviherath1961:Steve_21@cluster0.6lomv.mongodb.net/
     }
 
     stages {
@@ -254,7 +253,8 @@ pipeline {
             steps {
                 script {
                     withCredentials([string(credentialsId: 'MONGO_URL', variable: 'MONGO_URL')]) {
-                        // Build backend with MongoDB URL
+                        echo "🔹 Using MongoDB URL: ${MONGO_URL}" // Debugging
+
                         sh "docker build --no-cache --build-arg MONGO_URL='${MONGO_URL}' -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
                     }
                 }
@@ -264,7 +264,6 @@ pipeline {
                         sh "echo '${DOCKER_PASSWORD}' | docker login -u ${DOCKER_USERNAME} --password-stdin"
                     }
                     try {
-                        sh "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
                         sh "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
                     } catch (Exception e) {
                         error "Docker push failed!"
@@ -278,7 +277,7 @@ pipeline {
                 script {
                     echo "Testing SSH connection to EC2..."
                     sh """
-                        ssh -o StrictHostKeyChecking=no -i ${SSH_KEY_PATH} ${SSH_USER}@${EC2_PUBLIC_IP} "echo 'SSH Connection Successful'"
+                        ssh -o StrictHostKeyChecking=no -i ${SSH_KEY_PATH} ${SSH_USER}@${EC2_PUBLIC_IP} "echo '✅ SSH Connection Successful'"
                     """
                 }
             }
@@ -289,13 +288,11 @@ pipeline {
                 script {
                     echo "Deploying backend and frontend on EC2 using Ansible..."
                     
-                    // Ensure Ansible inventory is correctly set up
                     sh """
                         echo "[chat_servers]" > ansible/inventory.ini
                         echo "${EC2_PUBLIC_IP} ansible_user=${SSH_USER} ansible_ssh_private_key_file=${SSH_KEY_PATH}" >> ansible/inventory.ini
                     """
 
-                    // Run Ansible playbook with logging
                     sh "ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i ansible/inventory.ini ${ANSIBLE_PLAYBOOK} --private-key ${SSH_KEY_PATH} | tee ansible-deploy.log"
                 }
             }
