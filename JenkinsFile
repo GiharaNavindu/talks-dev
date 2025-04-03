@@ -252,20 +252,27 @@ pipeline {
             steps {
                 script {
                     withCredentials([string(credentialsId: 'MONGO_URL', variable: 'MONGO_URL')]) {
+                        echo "✅ Using MongoDB URL from Jenkins Credentials"
+
                         // Build backend with MongoDB URL
-                        sh "docker build --no-cache --build-arg MONGO_URL='${MONGO_URL}' -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api"
+                        sh """
+                            echo "Building Backend with MONGO_URL=${MONGO_URL}"
+                            docker build --no-cache --build-arg MONGO_URL='${MONGO_URL}' -t ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG} ./api
+                        """
                     }
                 }
 
                 script {
                     withCredentials([string(credentialsId: 'Dockerpwd', variable: 'DOCKER_PASSWORD')]) {
+                        echo "🔐 Logging in to Docker Hub..."
                         sh "echo '${DOCKER_PASSWORD}' | docker login -u ${DOCKER_USERNAME} --password-stdin"
                     }
+
                     try {
                         sh "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_TAG}"
                         sh "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}"
                     } catch (Exception e) {
-                        error "Docker push failed!"
+                        error "❌ Docker push failed!"
                     }
                 }
             }
@@ -274,9 +281,9 @@ pipeline {
         stage('Verify SSH Connection to EC2') {
             steps {
                 script {
-                    echo "Testing SSH connection to EC2..."
+                    echo "🔄 Testing SSH connection to EC2..."
                     sh """
-                        ssh -o StrictHostKeyChecking=no -i ${SSH_KEY_PATH} ${SSH_USER}@${EC2_PUBLIC_IP} "echo 'SSH Connection Successful'"
+                        ssh -o StrictHostKeyChecking=no -i ${SSH_KEY_PATH} ${SSH_USER}@${EC2_PUBLIC_IP} "echo '✅ SSH Connection Successful'"
                     """
                 }
             }
@@ -285,7 +292,7 @@ pipeline {
         stage('Deploy on EC2 with Ansible') {
             steps {
                 script {
-                    echo "Deploying backend and frontend on EC2 using Ansible..."
+                    echo "🚀 Deploying backend and frontend on EC2 using Ansible..."
                     
                     // Ensure Ansible inventory is correctly set up
                     sh """
@@ -302,7 +309,7 @@ pipeline {
         stage('Verify Docker and Containers on EC2') {
             steps {
                 script {
-                    echo "Checking Docker installation and running containers..."
+                    echo "🔍 Checking Docker installation and running containers..."
                     sh """
                         ssh -i ${SSH_KEY_PATH} ${SSH_USER}@${EC2_PUBLIC_IP} '
                             if ! command -v docker &> /dev/null; then
@@ -310,10 +317,25 @@ pipeline {
                             fi
                             echo "✅ Docker is installed."
 
-                            echo "Checking running containers..."
+                            echo "🔄 Checking running containers..."
                             docker ps -a
                         '
                     """
+                }
+            }
+        }
+
+        stage('Run Backend on EC2') {
+            steps {
+                script {
+                    withCredentials([string(credentialsId: 'MONGO_URL', variable: 'MONGO_URL')]) {
+                        echo "🚀 Starting Backend Container on EC2..."
+                        sh """
+                            ssh -i ${SSH_KEY_PATH} ${SSH_USER}@${EC2_PUBLIC_IP} '
+                                docker run -d --name backend-container -p 4040:4040 --env MONGO_URL="${MONGO_URL}" ${DOCKER_IMAGE_BACKEND}:${BUILD_TAG}
+                            '
+                        """
+                    }
                 }
             }
         }
@@ -322,7 +344,7 @@ pipeline {
     post {
         always {
             sh 'docker logout'
-            echo "Logged out from Docker Hub."
+            echo "🔐 Logged out from Docker Hub."
         }
         failure {
             echo "❌ Pipeline failed! Check logs for more details."
