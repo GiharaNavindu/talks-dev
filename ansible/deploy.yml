@@ -39,14 +39,9 @@
     docker_image_frontend: "devgixa/frontend-service:latest"
     network_name: "app-network"
     backend_port: "4040"
-    ansible_python_interpreter: /usr/local/bin/python3.9  # Use the new Python version
+    ansible_python_interpreter: /usr/local/bin/python3.9  # Correct path
 
   tasks:
-    - name: Install Amazon Linux Extras for Python 3.9
-      command: amazon-linux-extras install python3.9 -y
-      args:
-        creates: /usr/bin/python3.9  # Skip if already installed
-
     - name: Ensure Docker is installed
       package:
         name: docker
@@ -58,16 +53,11 @@
         state: started
         enabled: yes
 
-    - name: Install Python pip for Python 3.9
-      package:
-        name: python3.9-pip
-        state: present
-
     - name: Install requests library for Docker Ansible module
       pip:
         name: requests
         state: present
-        executable: /usr/bin/pip3.9  # Use pip for Python 3.9
+        executable: /usr/local/bin/pip3.9  # Correct pip path
 
     - name: Remove existing backend container (if running)
       shell: docker rm -f backend-container || true
