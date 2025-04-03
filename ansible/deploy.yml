@@ -39,7 +39,7 @@
     docker_image_frontend: "devgixa/frontend-service:latest"
     network_name: "app-network"
     backend_port: "4040"
-    ansible_python_interpreter: /usr/local/bin/python3.9  # Correct path
+    ansible_python_interpreter: /usr/local/bin/python3.9
 
   tasks:
     - name: Ensure Docker is installed
@@ -53,11 +53,17 @@
         state: started
         enabled: yes
 
+    - name: Install Python docker library for Ansible Docker modules
+      pip:
+        name: docker==6.1.3  # Try an older version if 7.1.0 fails
+        state: present
+        executable: /usr/local/bin/pip3.9
+
     - name: Install requests library for Docker Ansible module
       pip:
         name: requests
         state: present
-        executable: /usr/local/bin/pip3.9  # Correct pip path
+        executable: /usr/local/bin/pip3.9
 
     - name: Remove existing backend container (if running)
       shell: docker rm -f backend-container || true
@@ -76,6 +82,8 @@
       docker_network:
         name: "{{ network_name }}"
         state: present
+      environment:
+        DOCKER_HOST: "unix:///var/run/docker.sock"  # Explicitly set socket
 
     - name: Run backend container
       docker_container:
@@ -87,6 +95,8 @@
           - name: "{{ network_name }}"
         ports:
           - "{{ backend_port }}:{{ backend_port }}"
+      environment:
+        DOCKER_HOST: "unix:///var/run/docker.sock"  # Explicitly set socket
 
     - name: Run frontend container
       docker_container:
@@ -98,3 +108,5 @@
           - name: "{{ network_name }}"
         ports:
           - "80:5173"
+      environment:
+        DOCKER_HOST: "unix:///var/run/docker.sock"  # Explicitly set socket
