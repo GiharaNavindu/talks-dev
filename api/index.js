@@ -43,7 +43,7 @@ app.use(cookieParser());
 app.use(cors({
   credentials: true,
   origin: function (origin, callback) {
-    const allowedOrigins = [process.env.CLIENT_URL, 'http://localhost:5173','http://44.204.27.188'];
+    const allowedOrigins = [process.env.CLIENT_URL, 'http://localhost:5173','http://44.204.27.188','http://44.204.27.188/5173'];
     if (allowedOrigins.includes(origin) || !origin) {
       callback(null, true);
     } else {
